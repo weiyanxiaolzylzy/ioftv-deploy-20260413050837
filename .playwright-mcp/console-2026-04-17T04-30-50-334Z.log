@@ -1,0 +1,33 @@
+[     208ms] [LOG] ANTIGRAVITY: Code is running! @ http://localhost:8890/static/js/app.3deb2a0f040de4b2cc6c.js:36
+[     280ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8890/#/login:0
+[   10951ms] [LOG] {NODE_ENV: production, VUE_APP_BASE_API: , VUE_APP_outputDir: dist, BASE_URL: } @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   11696ms] [LOG] 构件供给 {success: true, data: Object} @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   11698ms] [LOG] 构件供给 {success: true, data: Object} @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   11734ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   11932ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8890/uploads/1773368158732.png:0
+[   16752ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   21761ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   26771ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   31778ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   36789ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   41815ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   46845ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   51858ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   56908ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   61959ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   67128ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   72347ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   77751ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   83397ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   89022ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[   97109ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  105643ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  111777ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  117918ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  126391ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  135872ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  142817ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  149185ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  158852ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  165266ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0
+[  171919ms] [ERROR] WebSocket connection to 'ws://localhost:8890/' failed: Error during WebSocket handshake: Unexpected response code: 200 @ http://localhost:8890/static/js/LSD.bighome.3deb2a0f040de4b2cc6c.js:0

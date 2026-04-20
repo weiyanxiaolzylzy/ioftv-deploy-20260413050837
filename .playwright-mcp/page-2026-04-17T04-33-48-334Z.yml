@@ -1,0 +1,71 @@
+- generic [ref=e236]:
+  - generic [ref=e237]:
+    - generic [ref=e240] [cursor=pointer]: 🔙 返回主页
+    - generic [ref=e242]: 钢结构尺寸检测系统
+    - generic [ref=e243]: "2026-04-17 周五 12: 33: 47"
+  - generic [ref=e244]:
+    - generic [ref=e246] [cursor=pointer]: 自动界面
+    - generic [ref=e248] [cursor=pointer]: 测量值
+    - generic [ref=e250] [cursor=pointer]: 结果
+  - generic [ref=e254]:
+    - generic [ref=e255]:
+      - generic [ref=e257]:
+        - generic [ref=e258]: ⚙
+        - generic [ref=e259]: 工件详情
+      - generic [ref=e260]:
+        - generic [ref=e261]:
+          - generic [ref=e263]: 设计图（IFC）
+          - generic [ref=e265]:
+            - generic [ref=e266]: 暂无今日检测计划
+            - generic [ref=e267]: 在「项目构件管理」中设置检测日期为今天
+        - generic [ref=e269]: 单目相机拍摄组图
+        - generic [ref=e272]: 双目相机拍摄组图
+        - generic [ref=e275]: 3D相机拍摄组图
+    - generic [ref=e277]:
+      - button "收起操作面板" [ref=e278] [cursor=pointer]:
+        - img [ref=e279]
+      - generic [ref=e281]:
+        - generic [ref=e282]:
+          - generic [ref=e283]: 工件详情
+          - generic [ref=e284]:
+            - generic [ref=e285]:
+              - generic [ref=e286]: 亮度：
+              - generic [ref=e287]: "128"
+            - generic [ref=e288]:
+              - generic [ref=e289]: 曝光：
+              - generic [ref=e290]: "-6"
+            - generic [ref=e291]:
+              - generic [ref=e292]: 焦距：
+              - generic [ref=e293]: "32"
+            - generic [ref=e294]:
+              - generic [ref=e295]: 全景：
+              - generic [ref=e296]: "3"
+            - generic [ref=e297]:
+              - generic [ref=e298]: 色调：
+              - generic [ref=e299]: "0"
+            - generic [ref=e300]:
+              - generic [ref=e301]: 清晰度：
+              - generic [ref=e302]: "64"
+            - generic [ref=e303]:
+              - generic [ref=e304]: 垂直旋转角度：
+              - generic [ref=e305]: "4600"
+            - generic [ref=e306]:
+              - generic [ref=e307]: 水平旋转角度：
+              - generic [ref=e308]: "10"
+        - generic [ref=e309]:
+          - generic [ref=e310]: 操作栏
+          - generic [ref=e311]:
+            - button "📥 批量导入模型" [ref=e313] [cursor=pointer]
+            - generic [ref=e314]:
+              - button "开始" [ref=e315] [cursor=pointer]
+              - button "拍摄" [ref=e316] [cursor=pointer]
+            - generic [ref=e317]:
+              - button "旋转" [ref=e318] [cursor=pointer]
+              - button "计算" [ref=e319] [cursor=pointer]
+            - button "预设计算" [ref=e321] [cursor=pointer]
+            - generic [ref=e322]:
+              - button "角度" [ref=e323] [cursor=pointer]
+              - textbox [ref=e324]: 60°
+              - generic [ref=e325]:
+                - button "▲" [ref=e326] [cursor=pointer]
+                - button "▼" [ref=e327] [cursor=pointer]

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:8765/health)",
+      "mcp__Playwright__browser_handle_dialog",
+      "mcp__Playwright__browser_wait_for"
+    ]
+  }
+}

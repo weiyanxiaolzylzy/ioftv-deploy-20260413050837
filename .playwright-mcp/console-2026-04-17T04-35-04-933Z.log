@@ -1,0 +1,118 @@
+[     115ms] [LOG] IFC 查看器已加载，等待上传模型... @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4285
+[     116ms] [LOG] 检测到 URL 参数 ifcUrl，准备自动加载... @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4285
+[     116ms] [LOG] 正在从 URL 加载 IFC 模型: /uploads/ifc/1776393486099__________4.13.ifc @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4285
+[    3145ms] [LOG] IFC 模型加载完成！ @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4285
+[    9138ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[    9138ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[    9141ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   14471ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   14471ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   14471ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   19833ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   19833ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   19834ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   25182ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   25183ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   25183ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   30531ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   30531ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   30531ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   35872ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   35873ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   35873ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   41237ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   41237ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   41238ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   46609ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   46609ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   46609ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   51954ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   51954ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   51954ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   57322ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   57322ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   57322ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   62848ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   62848ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   62848ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   68270ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   68270ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   68270ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   73880ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   73880ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   73880ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   79440ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   79440ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   79440ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   85212ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   85212ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   85213ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   92304ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   92305ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[   92305ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  101376ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  101376ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  101376ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  110662ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  110662ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  110662ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  119930ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  119930ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  119930ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  126308ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  126308ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  126309ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  131645ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  131645ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  131645ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  136992ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  136993ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  136993ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  142338ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  142339ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  142339ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  147677ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  147677ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  147677ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  153009ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  153009ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  153009ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  158391ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  158391ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  158392ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  163758ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  163758ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  163758ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  169117ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  169117ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  169117ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  174501ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  174501ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  174502ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  179877ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  179877ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  179877ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  185250ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  185250ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  185250ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  190748ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  190748ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  190748ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  196167ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  196167ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  196168ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  201901ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  201901ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  201902ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  207991ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  207991ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  207992ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  214644ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  214644ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  214644ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  223362ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  223363ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  223363ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  229808ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  229808ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264
+[  229808ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-C_SCFHIB.js:4264

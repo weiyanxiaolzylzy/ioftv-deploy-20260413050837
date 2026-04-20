@@ -1,0 +1,266 @@
+[     432ms] [LOG] IFC 查看器已加载，等待上传模型... @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[     441ms] [LOG] 检测到 URL 参数 ifcUrl，准备自动加载... @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[     441ms] [LOG] 正在从 URL 加载 IFC 模型: /uploads/ifc/1776393486099__________4.13.ifc @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[    3097ms] [LOG] IFC 模型加载完成！ @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[    6246ms] [LOG] [buildIndex] 从 Python API 获取 1159 个构件编号, 2310 个构件 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[   12799ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   12800ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   12800ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   20769ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   20769ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   20769ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   29487ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   29487ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   29487ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   38800ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   38800ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   38800ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   47626ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   47626ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   47627ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   56394ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   56394ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   56394ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   62860ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   62861ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   62861ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   73141ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   73141ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   73141ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   82982ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   82982ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   82982ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   92397ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   92397ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   92397ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   99466ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   99466ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[   99466ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  104814ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  104814ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  104814ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  110162ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  110162ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  110162ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  115507ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  115507ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  115507ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  120851ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  120851ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  120851ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  126197ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  126198ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  126198ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  131540ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  131540ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  131540ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  136908ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  136908ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  136909ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  142271ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  142271ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  142271ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  147628ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  147629ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  147629ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  152982ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  152982ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  152983ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  158395ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  158395ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  158395ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  163791ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  163791ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  163791ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  169279ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  169279ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  169279ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  175028ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  175028ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  175028ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  181542ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  181542ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  181542ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  188611ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  188611ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  188612ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  195390ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  195390ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  195390ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  202417ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  202417ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  202418ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  209838ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  209838ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  209839ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  218357ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  218358ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  218358ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  227180ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  227181ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  227181ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  236903ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  236903ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  236903ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  243910ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  243910ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  243911ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  252724ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  252724ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  252725ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  262902ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  262902ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  262903ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  270103ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  270103ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  270104ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  280097ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  280098ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  280098ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  289487ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  289487ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  289487ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  296659ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  296659ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  296660ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  305791ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  305791ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  305792ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  314274ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  314274ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  314274ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  322459ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  322459ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  322459ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  329262ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  329262ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  329262ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  336589ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  336589ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  336590ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  346557ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  346557ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  346557ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  353074ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  353074ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  353075ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  360700ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  360700ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  360701ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  370202ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  370202ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  370202ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  379570ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  379570ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  379570ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  388683ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  388683ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  388683ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  397241ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  397241ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  397241ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  404899ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  404900ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  404900ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  411554ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  411555ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  411555ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  421377ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  421378ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  421378ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  431453ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  431453ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  431453ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  441129ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  441129ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  441129ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  449958ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  449958ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  449959ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  459190ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  459190ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  459190ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  466925ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  466925ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  466925ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  474763ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  474763ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  474763ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  481219ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  481219ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  481220ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  489158ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  489158ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  489158ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  497905ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  497905ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  497906ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  507855ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  507855ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  507855ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  515642ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  515642ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  515643ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  524061ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  524061ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  524062ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  533713ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  533713ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  533714ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  542517ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  542517ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  542518ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  552869ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  552869ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  552869ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  559956ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  559956ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  559957ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  563671ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 33850, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  563826ms] [LOG] === showElementInSmallViewer 被调用 === @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  563826ms] [LOG] row: {expressID: 33850, globalId: 1dmHSz0025u34tD30tCp8t, name: Steel Assembly, type: IfcElementAssembly, componentMark: 2505-2GZ-3} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  563826ms] [LOG] currentModelID: 0 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  563826ms] [LOG] extractElementToSmallViewer 被调用, expressID: 33850 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  564168ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 33850, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  564316ms] [LOG] 成功克隆网格到小窗口 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  564861ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 33850, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565031ms] [LOG] === showElementInSmallViewer 被调用 === @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565032ms] [LOG] row: {expressID: 33850, globalId: 1dmHSz0025u34tD30tCp8t, name: Steel Assembly, type: IfcElementAssembly, componentMark: 2505-2GZ-3} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565032ms] [LOG] currentModelID: 0 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565032ms] [LOG] extractElementToSmallViewer 被调用, expressID: 33850 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565042ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 33850, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565182ms] [LOG] 成功克隆网格到小窗口 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565683ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 32552, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565819ms] [LOG] === showElementInSmallViewer 被调用 === @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565819ms] [LOG] row: {expressID: 32552, globalId: 0FEgVzr$b7hhAw$I6lOOIW, name: Steel Assembly, type: IfcElementAssembly, componentMark: 2505-2GZ-4} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565819ms] [LOG] currentModelID: 0 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565819ms] [LOG] extractElementToSmallViewer 被调用, expressID: 32552 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565827ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 32552, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  565926ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 32552, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  566070ms] [LOG] === showElementInSmallViewer 被调用 === @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  566070ms] [LOG] row: {expressID: 32552, globalId: 0FEgVzr$b7hhAw$I6lOOIW, name: Steel Assembly, type: IfcElementAssembly, componentMark: 2505-2GZ-4} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  566070ms] [LOG] currentModelID: 0 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  566070ms] [LOG] extractElementToSmallViewer 被调用, expressID: 32552 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  566077ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 32552, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  566178ms] [LOG] 成功克隆网格到小窗口 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  566436ms] [LOG] 成功克隆网格到小窗口 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  566613ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  566614ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  566615ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  574208ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 68978, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574355ms] [LOG] === showElementInSmallViewer 被调用 === @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574355ms] [LOG] row: {expressID: 68978, globalId: 1dmHSz001yn34tD30tCp8t, name: Steel Assembly, type: IfcElementAssembly, componentMark: 2505-3GL-11} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574355ms] [LOG] currentModelID: 0 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574355ms] [LOG] extractElementToSmallViewer 被调用, expressID: 68978 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574363ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 68978, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574447ms] [ERROR] WebSocket connection to 'ws://localhost:8080/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  574447ms] [ERROR] WebSocket 错误: Event @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  574447ms] [LOG] WebSocket 连接断开 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4264
+[  574474ms] [LOG] 成功克隆网格到小窗口 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574489ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 68978, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574646ms] [LOG] === showElementInSmallViewer 被调用 === @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574646ms] [LOG] row: {expressID: 68978, globalId: 1dmHSz001yn34tD30tCp8t, name: Steel Assembly, type: IfcElementAssembly, componentMark: 2505-3GL-11} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574646ms] [LOG] currentModelID: 0 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574646ms] [LOG] extractElementToSmallViewer 被调用, expressID: 68978 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574652ms] [WARNING] buildGreenMesh: 未匹配到任何三角面 {expressID: 68978, totalTris: 858731} @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285
+[  574839ms] [LOG] 成功克隆网格到小窗口 @ http://localhost:8890/ifc/assets/index-DlnaJ2mi.js:4285

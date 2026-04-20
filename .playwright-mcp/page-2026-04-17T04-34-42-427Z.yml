@@ -1,0 +1,12 @@
+- generic [active]:
+  - generic [ref=e3]:
+    - heading "IFC 模型查看器" [level=2] [ref=e4]
+    - button "Choose File" [ref=e5]
+    - separator [ref=e6]
+    - heading "构件列表" [level=3] [ref=e7]
+    - textbox "搜索 GlobalId / expressID" [ref=e8]
+    - paragraph [ref=e10]: 请先上传模型
+    - separator [ref=e11]
+    - heading "构件属性" [level=3] [ref=e12]
+    - paragraph [ref=e14]: 请上传模型并双击构件
+  - generic [ref=e17]: 未连接检测系统
