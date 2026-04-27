@@ -1,0 +1,29 @@
+{
+  "name": "ifc-viewer-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node -e \"const fs=require('fs'),p=require('path');const candidates=[p.join('node_modules','web-ifc-viewer','node_modules','web-ifc'),p.join('node_modules','web-ifc')];const target=p.join('public','wasm');fs.mkdirSync(target,{recursive:true});const source=candidates.find(dir=>fs.existsSync(p.join(dir,'web-ifc.wasm')));if(!source)throw new Error('web-ifc wasm not found');['web-ifc.wasm','web-ifc-mt.wasm'].forEach(f=>fs.copyFileSync(p.join(source,f),p.join(target,f)));console.log('WASM copied from',source,'to',target);\" && vite build && node -e \"const fs=require('fs'),p=require('path');const source=p.join('public','wasm');const target=p.join('dist','wasm');fs.mkdirSync(target,{recursive:true});['web-ifc.wasm','web-ifc-mt.wasm'].forEach(f=>fs.copyFileSync(p.join(source,f),p.join(target,f)));console.log('WASM copied to',target);\"",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.149.0",
+    "web-ifc": "0.0.77",
+    "web-ifc-three": "0.0.125",
+    "web-ifc-viewer": "^1.0.218"
+  },
+  "overrides": {
+    "web-ifc": "0.0.77",
+    "web-ifc-three": {
+      "web-ifc": "0.0.77"
+    },
+    "web-ifc-viewer": {
+      "web-ifc": "0.0.77"
+    }
+  },
+  "devDependencies": {
+    "vite": "^5.0.8"
+  }
+}

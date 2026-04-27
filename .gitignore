@@ -1,0 +1,11 @@
+node_modules/
+dist/
+ifc/dist/
+server/node_modules/
+server/uploads/
+uploads/
+上传/
+__pycache__/
+*.pyc
+*.log
+.DS_Store

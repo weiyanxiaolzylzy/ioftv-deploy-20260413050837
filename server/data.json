@@ -1,0 +1,74 @@
+{
+  "activeProjectId": "p1773970869970",
+  "projects": [
+    {
+      "id": "p1773970869970",
+      "name": "1111",
+      "province": "",
+      "city": "",
+      "ifcUrl": "/uploads/ifc/1773970868395_____________IFC.ifc",
+      "beamColumnCount": 11,
+      "inspectedCount": 0,
+      "qualifiedCount": 0,
+      "qualifiedRate": "0.0%",
+      "components": []
+    }
+  ],
+  "star": {
+    "groupName": "A3班组",
+    "passingRate": 98,
+    "firstPassRate": 95,
+    "photoUrl": "/uploads/1777213810023.png"
+  },
+  "ranking": [
+    {
+      "name": "A3班组",
+      "value": 98
+    },
+    {
+      "name": "A4班组",
+      "value": 97
+    },
+    {
+      "name": "A5班组",
+      "value": 95.2
+    },
+    {
+      "name": "A1班组",
+      "value": 95.2
+    },
+    {
+      "name": "A2班组",
+      "value": 95.2
+    }
+  ],
+  "workshopFirstPassRate": 97.5,
+  "groups": [
+    {
+      "id": "1773368135732",
+      "name": "A1班组",
+      "photoUrl": "/uploads/1773368135725.png"
+    },
+    {
+      "id": "1773368150809",
+      "name": "A2班组",
+      "photoUrl": "/uploads/1773368150784.png"
+    },
+    {
+      "id": "1773368158739",
+      "name": "A3班组",
+      "photoUrl": "/uploads/1773368158732.png"
+    },
+    {
+      "id": "1773368165613",
+      "name": "A4班组",
+      "photoUrl": "/uploads/1773368165608.png"
+    },
+    {
+      "id": "1773368173576",
+      "name": "A5班组",
+      "photoUrl": "/uploads/1773368173569.png"
+    }
+  ],
+  "todayPlan": []
+}

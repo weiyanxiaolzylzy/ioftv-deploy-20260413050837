@@ -1,0 +1,453 @@
+:root {
+  /* 底部聚焦视窗高度：全宽条带，主视口让出同等空间 */
+  --element-viewer-band-height: clamp(260px, 38vh, 460px);
+  /* 左侧 ui-panel 宽度（用于底部条避让） */
+  --ui-panel-width: 360px;
+  --ui-panel-gap: 24px;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#viewer-container {
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+body.element-viewer-open #viewer-container {
+  height: calc(100vh - var(--element-viewer-band-height));
+}
+
+body.element-viewer-open #ui-panel {
+  /* 主 3D 区域缩减，底部条不伸入面板区域 */
+  width: min(var(--ui-panel-width), calc(100vw - 80px));
+}
+
+#ui-panel {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  width: 360px;
+  max-height: 85vh;
+  overflow-y: auto;
+  backdrop-filter: blur(4px);
+}
+
+#ui-panel h2 { margin-top: 0; font-size: 18px; }
+#ui-panel h3 { font-size: 16px; margin-bottom: 10px; }
+hr { border: 0; border-top: 1px solid #ddd; margin: 15px 0; }
+
+.prop-item {
+  background: #f8f9fa;
+  margin-bottom: 5px;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  word-wrap: break-word;
+}
+.prop-key { font-weight: bold; color: #0056b3; }
+.placeholder { color: #888; font-style: italic; }
+
+#element-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #d9dde3;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 10px;
+  outline: none;
+}
+
+#elements-container {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #e6e8eb;
+  border-radius: 6px;
+  padding: 6px;
+  background: #fff;
+}
+
+.element-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 4px;
+  border-radius: 6px;
+}
+
+.element-row-check {
+  margin-top: 6px;
+  flex-shrink: 0;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.element-item {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.2;
+  user-select: none;
+}
+
+.element-item:hover {
+  background: #f2f6ff;
+}
+
+.element-item.selected {
+  background: #e8f0ff;
+  border: 1px solid #cfe0ff;
+}
+
+/* ===== WebSocket 状态指示器 ===== */
+#ws-status {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 10px 16px;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ccc;
+  transition: background 0.3s;
+}
+
+.status-dot.connected { background: #28a745; }
+.status-dot.connecting { background: #ffc107; animation: pulse 1s infinite; }
+.status-dot.error { background: #dc3545; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ===== 构件详情弹窗 ===== */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+  justify-content: center;
+  align-items: center;
+}
+
+.modal.show {
+  display: flex;
+}
+
+.modal-content {
+  background: #fff;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.close {
+  font-size: 28px;
+  font-weight: bold;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 5px;
+}
+
+.close:hover {
+  color: #333;
+}
+
+#modal-body {
+  padding: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+#modal-body .detail-row {
+  display: flex;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+
+#modal-body .detail-row:last-child {
+  border-bottom: none;
+}
+
+#modal-body .detail-label {
+  font-weight: bold;
+  color: #555;
+  min-width: 120px;
+}
+
+#modal-body .detail-value {
+  color: #333;
+  word-break: break-all;
+}
+
+#modal-body .alert-box {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+#modal-body .alert-box .reason {
+  font-weight: bold;
+  color: #856404;
+  font-size: 16px;
+}
+
+/* ===== 构件 3D 视图：底部全宽聚焦带（与左侧 #ui-panel 风格一致）===== */
+#element-viewer-window {
+  display: none;
+  position: fixed;
+  /* left / right 全部由 JS positionElementViewerBand() 动态计算，以适配各种 body class 场景 */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  z-index: 500;
+  max-width: none;
+  height: var(--element-viewer-band-height);
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+  flex-direction: column;
+}
+
+#element-viewer-window.show {
+  display: flex;
+}
+
+.viewer-window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 14px 20px;
+  background: transparent;
+  border-bottom: 1px solid #e6e8eb;
+  color: #222;
+}
+
+#viewer-window-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #222;
+  letter-spacing: 0.02em;
+}
+
+#element-viewer-window .btn-icon {
+  background: transparent;
+  border: none;
+  color: #999;
+  font-size: 26px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+  border-radius: 6px;
+}
+
+#element-viewer-window .btn-icon:hover {
+  color: #333;
+  background: #f2f6ff;
+}
+
+#element-viewer-container {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: #e8ecef;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+/* 嵌入大屏「构件模型」：只显示构件预览（标题 + 3D），隐藏完整 IFC 侧栏，避免与预览重叠 */
+body.embed-element-panel #element-viewer-container {
+  position: relative;
+}
+
+body.embed-element-panel #ui-panel,
+body.embed-element-panel #detail-modal {
+  display: none !important;
+}
+
+/* 隐藏主视口整模画布，仅保留拾取逻辑，避免线框从「构件预览」卡片边缘漏出 */
+body.embed-element-panel #viewer-container {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  left: 0 !important;
+  top: 0 !important;
+}
+
+body.embed-element-panel {
+  background: #e8ecef;
+}
+
+body.embed-element-panel #element-viewer-window {
+  background: #e8ecef !important;
+}
+
+body.embed-element-panel #ws-status {
+  bottom: 12px;
+  left: 12px;
+  z-index: 620;
+  font-size: 11px;
+  padding: 6px 12px;
+}
+
+body.element-viewer-open #ws-status {
+  bottom: calc(var(--element-viewer-band-height) + 12px);
+}
+
+/* ===== 调整原属性面板在弹窗中的样式 ===== */
+#properties-container .prop-item {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+#properties-container .prop-key {
+  min-width: 120px;
+}
+
+/* ===== 嵌入大屏：左侧「构件模型」仅 3D，无侧栏 ===== */
+body.embed-minimal #ui-panel,
+body.embed-minimal #ws-status,
+body.embed-minimal #detail-modal,
+body.embed-minimal #element-viewer-window {
+  display: none !important;
+}
+
+body.embed-minimal #viewer-container {
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+}
+
+/* ===== 嵌入大屏：「项目模型」精简侧栏 ===== */
+body.embed-dashboard #ui-panel h2,
+body.embed-dashboard #file-input {
+  display: none !important;
+}
+
+body.embed-dashboard #ui-panel {
+  width: min(300px, 42vw);
+  max-height: 78vh;
+  top: 10px;
+  left: 10px;
+  padding: 12px 14px;
+  font-size: 12px;
+  opacity: 0.96;
+}
+
+body.embed-dashboard #ui-panel h3 {
+  font-size: 13px;
+  margin: 8px 0 6px;
+}
+
+body.embed-dashboard #elements-container {
+  max-height: 200px;
+}
+
+body.embed-dashboard #ws-status {
+  bottom: 10px;
+  left: 10px;
+  padding: 6px 12px;
+  font-size: 11px;
+  opacity: 0.88;
+}
+
+body.embed-dashboard.element-viewer-open #ws-status {
+  bottom: calc(var(--element-viewer-band-height) + 10px);
+}
+
+/* ===== 响应式调整 ===== */
+@media (max-width: 768px) {
+  :root {
+    --element-viewer-band-height: clamp(220px, 42vh, 380px);
+    /* 移动端无侧栏，底部条全宽 */
+    --ui-panel-width: 0px;
+    --ui-panel-gap: 0px;
+  }
+
+  #ui-panel {
+    width: calc(100% - 40px);
+    max-height: 50vh;
+  }
+
+  /* 移动端底部条全宽，内联样式让位于 CSS */
+  #element-viewer-window {
+    left: auto !important;
+    right: auto !important;
+  }
+
+  /* 取消桌面端的 shrink 效果 */
+  body.element-viewer-open #ui-panel {
+    width: calc(100% - 40px);
+  }
+
+  #element-viewer-window .viewer-window-header {
+    padding: 10px 14px;
+  }
+
+  #viewer-window-title {
+    font-size: 14px;
+  }
+}

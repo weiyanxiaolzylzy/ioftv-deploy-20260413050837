@@ -1,0 +1,13 @@
+{
+  "name": "ifc-ws-server",
+  "version": "1.0.0",
+  "description": "WebSocket 中转服务 - 用于 IFC 检测系统与网页端通信",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.0"
+  }
+}

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BIM / IFC 网页查看器</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <!-- 主查看器 -->
+    <div id="viewer-container"></div>
+
+    <!-- 左侧控制面板 -->
+    <div id="ui-panel">
+      <h2>IFC 模型查看器</h2>
+      <input type="file" id="file-input" accept=".ifc" />
+      <hr />
+      <h3>构件列表</h3>
+      <input type="text" id="element-search" placeholder="搜索 GlobalId / expressID" />
+      <div id="elements-container">
+        <p class="placeholder">请先上传模型</p>
+      </div>
+      <hr />
+      <h3>构件属性</h3>
+      <div id="properties-container">
+        <p class="placeholder">请上传模型并双击构件</p>
+      </div>
+    </div>
+
+    <!-- WebSocket 连接状态 -->
+    <div id="ws-status">
+      <span class="status-dot" id="ws-dot"></span>
+      <span id="ws-text">未连接检测系统</span>
+    </div>
+
+    <!-- 构件详情弹窗 -->
+    <div id="detail-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-title">构件详情</h2>
+          <span class="close" id="modal-close">&times;</span>
+        </div>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- 构件 3D 视图小窗口 -->
+    <div id="element-viewer-window">
+      <div class="viewer-window-header">
+        <span id="viewer-window-title">构件 3D 视图</span>
+        <button id="viewer-window-close" class="btn-icon" title="关闭">&times;</button>
+      </div>
+      <div id="element-viewer-container"></div>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
