@@ -1644,18 +1644,11 @@ export default {
 
     .titletext {
       font-size: 26px;
-      font-weight: 900;
+      font-weight: bold !important;
       letter-spacing: 6px;
-      background: linear-gradient(
-        92deg,
-        #0072ff 0%,
-        #00eaff 48.8525390625%,
-        #01aaff 100%
-      );
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
       margin: 0 12px;
-      filter: drop-shadow(0 0 15px rgba(0, 234, 255, 0.6));
     }
 
     .zuo,

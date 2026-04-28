@@ -3,6 +3,25 @@
 @import './theme/index.css';
 @import '../iconfont//iconfont.css';
 
+@font-face {
+  font-family: 'AlibabaPuHuiTi';
+  src: url('/public/AlibabaPuHuiTi-3-45-Light.woff2') format('woff2'),
+       url('/public/AlibabaPuHuiTi-3-45-Light.woff') format('woff'),
+       url('/public/AlibabaPuHuiTi-3-45-Light.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+body, html, * {
+  font-family: 'AlibabaPuHuiTi', 'Microsoft YaHei', Arial, sans-serif;
+  font-weight: normal;
+}
+
+h1, h2, h3, h4, h5, h6, .title, .header-title {
+  font-weight: bold;
+}
+
 [class*=" blq-icon-"],
 [class^=blq-icon-] {
   font-family: iconfont !important;

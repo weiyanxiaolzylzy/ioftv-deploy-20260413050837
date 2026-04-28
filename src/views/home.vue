@@ -6,23 +6,22 @@
  * @FilePath: \web-pc\src\pages\big-screen\view\home.vue
 -->
 <template>
-  <!-- <div id="index" ref="appRef" class="index_home" :class="{ pageisScale: isScale }"> -->
-  <ScaleScreen
-    :width="1920"
-    :height="1080"
-    class="scale-wrap"
-    :selfAdaption="selfAdaptionVal"
-  >
-    <div class="bg" :class="{ 'light-theme': isLightTheme }">
+  <div class="screen-shell">
+    <div
+      class="bg"
+      :class="{
+        'light-theme': isLightTheme,
+        'steel-qc-theme': themeMode === 'steel-qc'
+      }"
+    >
       <dv-loading v-if="loading">Loading...</dv-loading>
       <div v-else class="host-body">
-        <!-- 头部 s -->
         <div class="d-flex jc-center title_wrap">
           <div class="zuojuxing"></div>
           <div class="youjuxing"></div>
           <div class="zuojuxing2"></div>
           <div class="guang"></div>
-          <div class="d-flex jc-center">
+          <div class="d-flex jc-center title_main">
             <div class="title">
               <img src="@/assets/img/logo/logo.png" class="header-logo" alt="Logo">
               <span class="title-text"
@@ -30,25 +29,43 @@
               >
             </div>
           </div>
-          <div class="timers">
+          <div v-if="showDashboardControls" class="title_tools">
+            <div class="dashboard-controls">
+              <div class="theme-toggle-btn" @click="toggleTheme" :title="themeHint">
+                <span v-if="themeMode === 'light'">🌙</span>
+                <span v-else-if="themeMode === 'steel-qc'">🏭</span>
+                <span v-else>☀️</span>
+              </div>
+              <div class="version-toggle-btn" @click="toggleVersion">
+                钢结构尺寸检测系统
+              </div>
+            </div>
+            <div class="timers">
+              {{ dateYear }} {{ dateWeek }} {{ dateDay }}
+            </div>
+          </div>
+          <div v-else class="timers timers--standalone">
             {{ dateYear }} {{ dateWeek }} {{ dateDay }}
           </div>
         </div>
-        <!-- 头部 e-->
-        <!-- 内容  s-->
-        <router-view></router-view>
-        <!-- 内容 e -->
+
+        <div class="dashboard-shell">
+          <router-view v-slot="{ Component }">
+            <component
+              :is="Component"
+              :theme-mode="themeMode"
+            />
+          </router-view>
+        </div>
       </div>
     </div>
-  </ScaleScreen>
-  <!-- </div> -->
+  </div>
 </template>
 
 <script>
 import { formatTime } from "../utils/index.js";
-import ScaleScreen from "@/components/scale-screen/scale-screen.vue";
+
 export default {
-  components: { ScaleScreen },
   data() {
     return {
       timing: null,
@@ -56,20 +73,20 @@ export default {
       dateDay: null,
       dateYear: null,
       dateWeek: null,
+      themeMode: "dark",
       weekday: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
       isLightTheme: false, // 主题状态
     };
   },
   computed: {
-    selfAdaptionVal() {
-      try {
-        const setting = this.$store && this.$store.state && this.$store.state.setting
-        if (setting && typeof setting.isScale !== 'undefined') {
-          return !!setting.isScale
-        }
-      } catch (e) {}
-      return true
-    }
+    showDashboardControls() {
+      return this.$route.name === "index";
+    },
+    themeHint() {
+      if (this.themeMode === "dark") return "当前：深蓝科技风，点击切换亮色主题";
+      if (this.themeMode === "light") return "当前：亮色主题，点击切换钢结构检测风";
+      return "当前：钢结构检测风，点击切换深蓝科技风";
+    },
   },
   filters: {
     numsFilter(msg) {
@@ -81,6 +98,13 @@ export default {
     const savedTheme = localStorage.getItem("themeMode");
     if (savedTheme === "light") {
       this.isLightTheme = true;
+      this.themeMode = "light";
+    } else if (savedTheme === "steel-qc") {
+      this.isLightTheme = false;
+      this.themeMode = "steel-qc";
+    } else {
+      this.isLightTheme = false;
+      this.themeMode = "dark";
     }
   },
   mounted() {
@@ -97,6 +121,7 @@ export default {
     handleThemeChange() {
       const savedTheme = localStorage.getItem("themeMode");
       this.isLightTheme = savedTheme === "light";
+      this.themeMode = savedTheme || "dark";
     },
     timeFn() {
       this.timing = setInterval(() => {
@@ -104,6 +129,27 @@ export default {
         this.dateYear = formatTime(new Date(), "yyyy-MM-dd");
         this.dateWeek = this.weekday[new Date().getDay()];
       }, 1000);
+    },
+    toggleTheme() {
+      if (this.themeMode === "dark") {
+        this.themeMode = "light";
+        this.isLightTheme = true;
+        localStorage.setItem("themeMode", "light");
+      } else if (this.themeMode === "light") {
+        this.themeMode = "steel-qc";
+        this.isLightTheme = false;
+        localStorage.setItem("themeMode", "steel-qc");
+      } else {
+        this.themeMode = "dark";
+        this.isLightTheme = false;
+        localStorage.setItem("themeMode", "dark");
+      }
+      this.$nextTick(() => {
+        window.dispatchEvent(new Event("themeChange"));
+      });
+    },
+    toggleVersion() {
+      this.$router.push("/secondview");
     },
     cancelLoading() {
       let timer = setTimeout(() => {

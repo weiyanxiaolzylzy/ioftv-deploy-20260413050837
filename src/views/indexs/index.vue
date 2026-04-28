@@ -7,20 +7,7 @@
 -->
 <template>
   <div class="contents" :class="themeClass">
-    <div class="theme-toggle-btn" @click="toggleTheme" :title="themeHint">
-      <span v-if="themeMode === 'light'">🌙</span>
-      <span v-else-if="themeMode === 'steel-qc'">🏭</span>
-      <span v-else>☀️</span>
-    </div>
-    <div class="mode-toggle-btn" @click="toggleMode" style="left: 200px">
-      {{ viewMode === 'inspection' ? '销售模式' : '检测模式' }}
-    </div>
-    
-    <div class="version-toggle-btn" @click="toggleVersion" style="left: 320px">
-      钢结构尺寸检测系统
-    </div>
-
-    <template v-if="viewMode === 'inspection'">
+    <div class="inspection_layout">
       <div class="contetn_left">
         <div class="pagetab"></div>
         <ItemWrap class="contetn_left-top contetn_lr-item" title="检测总览">
@@ -49,84 +36,6 @@
           <RightBottom ref="rightBottom" />
         </div>
       </div>
-    </template>
-
-    <div v-else class="sales_layout">
-      <div class="sales_left">
-        <ItemWrap class="sales_block" title="产品概览">
-          <div class="product_list">
-            <div class="product_item" v-for="(item, index) in salesProducts" :key="index">
-              <div class="product_name">{{ item.name }}</div>
-              <div class="product_meta">{{ item.spec }}</div>
-              <div class="product_stats">
-                <span>库存 {{ item.stock }}</span>
-                <span>出厂价 {{ item.price }}</span>
-              </div>
-              <div class="product_status" :class="item.status">{{ item.statusText }}</div>
-            </div>
-          </div>
-        </ItemWrap>
-        <ItemWrap class="sales_block" title="销售漏斗">
-          <div class="funnel_list">
-            <div class="funnel_item" v-for="(item, index) in salesFunnel" :key="index">
-              <div class="funnel_label">{{ item.label }}</div>
-              <div class="funnel_bar">
-                <span :style="{ width: item.percent + '%' }"></span>
-              </div>
-              <div class="funnel_value">{{ item.value }}</div>
-            </div>
-          </div>
-        </ItemWrap>
-      </div>
-
-      <div class="sales_center">
-        <ItemWrap class="sales_block" title="销售概览">
-          <div class="kpi_grid">
-            <div class="kpi_item" v-for="(item, index) in salesKpis" :key="index">
-              <div class="kpi_label">{{ item.label }}</div>
-              <div class="kpi_value">{{ item.value }}<span>{{ item.unit }}</span></div>
-            </div>
-          </div>
-        </ItemWrap>
-        <ItemWrap class="sales_block" title="订单履约进度">
-          <div class="order_list">
-            <div class="order_item" v-for="(item, index) in salesOrders" :key="index">
-              <div class="order_main">
-                <span class="order_project">{{ item.project }}</span>
-                <span class="order_product">{{ item.product }}</span>
-                <span class="order_qty">{{ item.qty }}</span>
-              </div>
-              <div class="order_meta">
-                <span>{{ item.date }}</span>
-                <span :class="item.status">{{ item.statusText }}</span>
-              </div>
-            </div>
-          </div>
-        </ItemWrap>
-      </div>
-
-      <div class="sales_right">
-        <ItemWrap class="sales_block" title="渠道贡献">
-          <div class="channel_list">
-            <div class="channel_item" v-for="(item, index) in salesChannels" :key="index">
-              <div class="channel_label">{{ item.name }}</div>
-              <div class="channel_bar">
-                <span :style="{ width: item.value + '%' }"></span>
-              </div>
-              <div class="channel_value">{{ item.value }}%</div>
-            </div>
-          </div>
-        </ItemWrap>
-        <ItemWrap class="sales_block" title="重点客户">
-          <div class="customer_list">
-            <div class="customer_item" v-for="(item, index) in salesCustomers" :key="index">
-              <div class="customer_name">{{ item.name }}</div>
-              <div class="customer_level">{{ item.level }}</div>
-              <div class="customer_value">{{ item.value }}</div>
-            </div>
-          </div>
-        </ItemWrap>
-      </div>
     </div>
   </div>
 </template>
@@ -140,6 +49,12 @@ import MonthlyPerformance from "./monthly-performance.vue";
 import RightBottom from "./right-bottom.vue";
 
 export default {
+  props: {
+    themeMode: {
+      type: String,
+      default: "dark",
+    },
+  },
   components: {
     LeftTop,
     LeftCenter,
@@ -149,46 +64,7 @@ export default {
     RightBottom,
   },
   data() {
-    return {
-      isLightTheme: false,
-      viewMode: "inspection",
-      themeMode: "dark", // 'dark' | 'light' | 'steel-qc'
-      salesKpis: [
-        { label: "本月销售额", value: "3,260", unit: "万" },
-        { label: "新签订单", value: "38", unit: "单" },
-        { label: "毛利率", value: "22.4", unit: "%" },
-        { label: "交付准时率", value: "96.1", unit: "%" }
-      ],
-      salesFunnel: [
-        { label: "线索", value: "320", percent: 100 },
-        { label: "商机", value: "210", percent: 80 },
-        { label: "报价", value: "156", percent: 60 },
-        { label: "签约", value: "92", percent: 40 },
-        { label: "交付", value: "68", percent: 30 }
-      ],
-      salesProducts: [
-        { name: "钢梁 L 型", spec: "Q355B / 8m", stock: "680", price: "¥ 1.2万", status: "hot", statusText: "热销" },
-        { name: "钢柱 H 型", spec: "Q355B / 6m", stock: "420", price: "¥ 1.6万", status: "stable", statusText: "稳定" },
-        { name: "节点板套件", spec: "标准件", stock: "980", price: "¥ 0.18万", status: "stock", statusText: "备货" }
-      ],
-      salesOrders: [
-        { project: "太原智造园", product: "钢梁 L 型", qty: "180 件", date: "2026-02-20", status: "on", statusText: "生产中" },
-        { project: "临汾桥梁", product: "钢柱 H 型", qty: "96 件", date: "2026-02-19", status: "ready", statusText: "待发运" },
-        { project: "运城园区", product: "节点板套件", qty: "320 套", date: "2026-02-18", status: "done", statusText: "已交付" }
-      ],
-      salesChannels: [
-        { name: "直销", value: 45 },
-        { name: "渠道代理", value: 30 },
-        { name: "工程总包", value: 18 },
-        { name: "电商平台", value: 7 }
-      ],
-      salesCustomers: [
-        { name: "山西建投", level: "A级客户", value: "¥ 680 万" },
-        { name: "中铁建工", level: "A级客户", value: "¥ 520 万" },
-        { name: "华北机设", level: "B级客户", value: "¥ 310 万" },
-        { name: "太原钢构", level: "B级客户", value: "¥ 280 万" }
-      ]
-    };
+    return {};
   },
   filters: {
     numsFilter(msg) {
@@ -201,24 +77,6 @@ export default {
       if (this.themeMode === "steel-qc") return "steel-qc-theme";
       return "";
     },
-    themeHint() {
-      if (this.themeMode === "dark") return "当前：深蓝科技风，点击切换亮色主题";
-      if (this.themeMode === "light") return "当前：亮色主题，点击切换钢结构检测风";
-      return "当前：钢结构检测风，点击切换深蓝科技风";
-    }
-  },
-  created() {
-    const savedTheme = localStorage.getItem("themeMode");
-    if (savedTheme === "light") {
-      this.isLightTheme = true;
-      this.themeMode = "light";
-    } else if (savedTheme === "steel-qc") {
-      this.isLightTheme = false;
-      this.themeMode = "steel-qc";
-    } else {
-      this.isLightTheme = false;
-      this.themeMode = "dark";
-    }
   },
 
   mounted() {
@@ -241,122 +99,10 @@ export default {
         rightBottom.syncFromProjectViewer(payload.ifcUrl, payload.element);
       }
     },
-    toggleTheme() {
-      // 三态循环：dark → light → steel-qc → dark
-      if (this.themeMode === "dark") {
-        this.themeMode = "light";
-        this.isLightTheme = true;
-        localStorage.setItem("themeMode", "light");
-      } else if (this.themeMode === "light") {
-        this.themeMode = "steel-qc";
-        this.isLightTheme = false;
-        localStorage.setItem("themeMode", "steel-qc");
-      } else {
-        this.themeMode = "dark";
-        this.isLightTheme = false;
-        localStorage.setItem("themeMode", "dark");
-      }
-      this.$nextTick(() => {
-        window.dispatchEvent(new Event("themeChange"));
-      });
-    },
-    toggleMode() {
-      this.viewMode = this.viewMode === "inspection" ? "sales" : "inspection";
-    },
-    toggleVersion() {
-      // 这里的逻辑之前是指向外部子项目的 /steel-qc/ 目录
-      // 如果你想访问的是“钢结构检测系统”的内部版本（即 src/views/secondview/index.vue）
-      // 我们直接通过 vue-router 跳转即可，这样不会出现 404/Unexpected token 报错
-      this.$router.push('/secondview');
-    },
   },
 };
 </script>
 <style lang="scss" scoped>
-// 主题切换按钮
-.theme-toggle-btn {
-  position: fixed;
-  top: 25px;
-  left: 20px;
-  width: 45px;
-  height: 45px;
-  background: rgba(74, 144, 226, 0.2);
-  border: 2px solid #4a90e2;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 24px;
-  transition: all 0.3s;
-  z-index: 9999;
-  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
-
-  &:hover {
-    background: rgba(74, 144, 226, 0.4);
-    transform: scale(1.1);
-    box-shadow: 0 6px 16px rgba(74, 144, 226, 0.5);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-}
-
-.mode-toggle-btn {
-  position: fixed;
-  top: 25px;
-  left: 80px;
-  height: 45px;
-  padding: 0 18px;
-  background: rgba(0, 186, 255, 0.18);
-  border: 2px solid #00baff;
-  border-radius: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 700;
-  color: #00baff;
-  transition: all 0.3s;
-  z-index: 9999;
-  box-shadow: 0 4px 12px rgba(0, 186, 255, 0.25);
-  letter-spacing: 1px;
-}
-
-.mode-toggle-btn:hover {
-  background: rgba(0, 186, 255, 0.35);
-  transform: translateY(-1px);
-}
-
-.version-toggle-btn {
-  position: fixed;
-  top: 25px;
-  left: 200px;
-  height: 45px;
-  padding: 0 18px;
-  background: rgba(255, 158, 0, 0.18);
-  border: 2px solid #ff9e00;
-  border-radius: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 800;
-  color: #ff9e00;
-  transition: all 0.3s;
-  z-index: 9999;
-  box-shadow: 0 4px 12px rgba(255, 158, 0, 0.25);
-  letter-spacing: 1px;
-  
-  &:hover {
-    background: rgba(255, 158, 0, 0.35);
-    transform: translateY(-1px);
-  }
-}
-
 // 亮色主题
 .contents.light-theme {
   background: #f5f7fa !important;
@@ -496,16 +242,6 @@ export default {
   // 确保所有背景是深色的地方都改成白色
   ::v-deep [style*="background"] {
     background: #ffffff !important;
-  }
-
-  // 修改按钮样式
-  .theme-toggle-btn {
-    background: rgba(74, 144, 226, 0.15) !important;
-    border-color: #4a90e2 !important;
-
-    &:hover {
-      background: rgba(74, 144, 226, 0.3) !important;
-    }
   }
 
   // 修改地图标题颜色
@@ -721,58 +457,60 @@ export default {
     }
   }
 
-  // 主题切换按钮
-  .theme-toggle-btn {
-    background: rgba(60, 160, 255, 0.2) !important;
-    border-color: #7dd8ff !important;
-    color: #7dd8ff !important;
-
-    &:hover {
-      background: rgba(60, 160, 255, 0.35) !important;
-      transform: scale(1.1);
-    }
-  }
 }
 
 // 内容
 .contents {
-  display: grid;
-  grid-template-columns: 380px minmax(0, 1fr) 340px;
-  grid-template-rows: minmax(0, 1fr) minmax(220px, 380px);
-  gap: 12px;
-  align-items: stretch;
   height: 100%;
+  min-height: 0;
+  padding: 0 clamp(4px, 0.35vw, 8px) clamp(4px, 0.35vw, 8px);
+  box-sizing: border-box;
   overflow: hidden;
+}
+
+.inspection_layout {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(290px, 23fr) minmax(0, 54fr) minmax(290px, 23fr);
+  grid-template-rows: minmax(0, 1fr) clamp(240px, 26vh, 340px);
+  gap: clamp(10px, 0.8vw, 16px);
+  align-items: stretch;
 
   .contetn_left,
   .contetn_right {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: clamp(10px, 0.8vw, 16px);
+    min-height: 0;
   }
 
   .contetn_left {
     grid-column: 1;
     grid-row: 1 / span 2;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 0.95fr) minmax(0, 1.08fr) minmax(0, 0.97fr);
     min-height: 0;
+    position: relative;
   }
 
   .contetn_left-top {
-    height: auto;
+    height: 100%;
     min-height: 0;
+    transform: translateY(clamp(0px, -0.6vw, -16px));
   }
 
   .contetn_left-center {
-    height: auto;
+    height: 100%;
     min-height: 0;
+    transform: translateY(clamp(0px, -0.6vw, -16px));
   }
 
   .contetn_left-bottom {
-    height: auto;
+    height: 100%;
     min-height: 0;
+    transform: translateY(clamp(0px, -0.6vw, -16px));
   }
 
   .contetn_center_top {
@@ -781,7 +519,7 @@ export default {
     width: 100%;
     min-width: 0;
     min-height: 0;
-    border-radius: 12px;
+    border-radius: 16px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -812,300 +550,30 @@ export default {
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(0,190,255,0.35);
-    border-radius: 12px;
+    border-radius: 16px;
     position: relative;
     overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-  }
-
-  .contetn_left {
-    gap: 12px;
-    position: relative;
+    box-shadow: 0 10px 32px rgba(0,0,0,0.28);
   }
 }
 
-.sales_layout {
-  width: 100%;
-  display: flex;
-  gap: 16px;
-  padding: 8px 12px;
-  box-sizing: border-box;
-
-  .sales_left,
-  .sales_center,
-  .sales_right {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .sales_left,
-  .sales_right {
-    width: 540px;
-  }
-
-  .sales_center {
-    flex: 1;
-  }
-
-  .sales_block {
-    height: 320px;
+@media (min-aspect-ratio: 21 / 9) {
+  .inspection_layout {
+    grid-template-columns: minmax(310px, 23fr) minmax(0, 54fr) minmax(310px, 23fr);
+    grid-template-rows: minmax(0, 1fr) clamp(220px, 23vh, 320px);
   }
 }
 
-.product_list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 8px;
-
-  .product_item {
-    background: rgba(0, 186, 255, 0.06);
-    border: 1px solid rgba(0, 186, 255, 0.25);
-    border-radius: 6px;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .product_name {
-    font-size: 18px;
-    font-weight: 900;
-    color: #fff;
-  }
-
-  .product_meta {
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.6);
-  }
-
-  .product_stats {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: #00baff;
-  }
-
-  .product_status {
-    align-self: flex-start;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 12px;
-    background: rgba(0, 186, 255, 0.15);
-    color: #00baff;
-  }
-
-  .product_status.hot {
-    background: rgba(255, 158, 0, 0.2);
-    color: #ff9e00;
-  }
-
-  .product_status.stable {
-    background: rgba(0, 186, 255, 0.15);
-    color: #00baff;
-  }
-
-  .product_status.stock {
-    background: rgba(73, 231, 194, 0.2);
-    color: #49e7c2;
+@media (max-aspect-ratio: 16 / 9) {
+  .inspection_layout {
+    grid-template-columns: minmax(270px, 25fr) minmax(0, 48fr) minmax(270px, 27fr);
+    grid-template-rows: minmax(0, 1fr) clamp(250px, 28vh, 360px);
   }
 }
 
-.funnel_list {
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.funnel_item {
-  display: grid;
-  grid-template-columns: 70px 1fr 60px;
-  gap: 10px;
-  align-items: center;
-  font-size: 12px;
-  color: #fff;
-}
-
-.funnel_bar {
-  height: 8px;
-  background: rgba(0, 186, 255, 0.12);
-  border-radius: 10px;
-  overflow: hidden;
-
-  span {
-    display: block;
-    height: 100%;
-    background: linear-gradient(90deg, #00baff 0%, #3be7ff 100%);
-  }
-}
-
-.funnel_value {
-  color: #00baff;
-  text-align: right;
-}
-
-.kpi_grid {
-  padding: 12px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-
-.kpi_item {
-  background: rgba(0, 186, 255, 0.1);
-  border: 1px solid rgba(0, 186, 255, 0.25);
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.kpi_label {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.kpi_value {
-  font-size: 28px;
-  color: #00baff;
-  font-weight: 900;
-
-  span {
-    font-size: 14px;
-    margin-left: 6px;
-    color: rgba(255, 255, 255, 0.6);
-  }
-}
-
-.order_list {
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.order_item {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(0, 186, 255, 0.2);
-  border-radius: 6px;
-  padding: 8px 10px;
-}
-
-.order_main {
-  display: flex;
-  justify-content: space-between;
-  font-size: 15px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 8px;
-}
-
-.order_meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.order_meta .on {
-  color: #00baff;
-}
-
-.order_meta .ready {
-  color: #ffb340;
-}
-
-.order_meta .done {
-  color: #49e7c2;
-}
-
-.channel_list {
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.channel_item {
-  display: grid;
-  grid-template-columns: 70px 1fr 50px;
-  gap: 10px;
-  align-items: center;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.channel_label {
-  color: #fff;
-  font-weight: 800;
-}
-
-.channel_bar {
-  height: 8px;
-  background: rgba(0, 186, 255, 0.15);
-  border-radius: 10px;
-  overflow: hidden;
-
-  span {
-    display: block;
-    height: 100%;
-    background: linear-gradient(90deg, #00baff 0%, #75f0ff 100%);
-  }
-}
-
-.channel_value {
-  text-align: right;
-  color: #00baff;
-}
-
-.customer_list {
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.customer_item {
-  display: grid;
-  grid-template-columns: 1fr 80px 90px;
-  gap: 10px;
-  align-items: center;
-  font-size: 12px;
-  background: rgba(0, 186, 255, 0.06);
-  border: 1px solid rgba(0, 186, 255, 0.2);
-  border-radius: 6px;
-  padding: 8px 10px;
-}
-
-.customer_name {
-  color: #fff;
-}
-
-.customer_level {
-  color: #00baff;
-}
-
-.customer_value {
-  text-align: right;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-@keyframes rotating {
-  0% {
-    -webkit-transform: rotate(0) scale(1);
-    transform: rotate(0) scale(1);
-  }
-  50% {
-    -webkit-transform: rotate(180deg) scale(1.1);
-    transform: rotate(180deg) scale(1.1);
-  }
-  100% {
-    -webkit-transform: rotate(360deg) scale(1);
-    transform: rotate(360deg) scale(1);
+@media (max-width: 1500px) {
+  .inspection_layout {
+    grid-template-columns: minmax(250px, 25fr) minmax(0, 46fr) minmax(250px, 29fr);
   }
 }
 </style>

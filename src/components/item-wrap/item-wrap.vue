@@ -96,19 +96,11 @@ export default {
 
     .card-title {
       font-size: 30px;
-      font-weight: 900;
+      font-weight: bold !important;
       letter-spacing: 4px;
       margin: 0;
-      background: linear-gradient(
-        92deg,
-        #00eaff 0%,
-        #00ffaa 50%,
-        #00eaff 100%
-      );
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-shadow: 0 0 30px rgba(0, 234, 255, 0.5);
-      filter: drop-shadow(0 0 12px rgba(0, 234, 255, 0.6));
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
       white-space: nowrap;
     }
   }
