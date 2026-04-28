@@ -17,44 +17,55 @@
             </select>
         </div>
         <ul class="user_Overview user_Overview--grid">
-            <li class="user_Overview-item" style="color: #00fdfa" @click="scope === 'all' && openEditModal('project')">
-                <div v-if="scope === 'all'" class="user_Overview_nums allnum bgdonghua">
+            <li class="user_Overview-item kpi_card kpi_card--project" @click="scope === 'all' && openEditModal('project')">
+                <div class="kpi_card__label">
+                    <span class="kpi_card__mark"></span>
+                    <span class="kpi_card__title">
+                        <span>{{ scope === 'all' ? '项目' : '当前' }}</span>
+                        <span>{{ scope === 'all' ? '数量' : '项目' }}</span>
+                    </span>
+                </div>
+                <div v-if="scope === 'all'" class="kpi_card__value">
                     <dv-digital-flop :config="projectConfig" style="width:100%;height:100%;" />
                 </div>
-                <div v-else class="project_name_card" :title="displayProjectName">
-                    <div class="project_name_card__chip">当前项目</div>
-                    <div class="project_name_card__name">{{ displayProjectName }}</div>
-                </div>
-                <div v-if="scope === 'all'" class="metric_label">
-                    <span class="metric_label__line">项目</span>
-                    <span class="metric_label__line">数量</span>
+                <div v-else class="kpi_card__project_name" :title="displayProjectName">
+                    {{ displayProjectName }}
                 </div>
             </li>
-            <li class="user_Overview-item" style="color: #07f7a8" @click="openEditModal('detected')">
-                <div class="user_Overview_nums online bgdonghua">
+            <li class="user_Overview-item kpi_card kpi_card--detected" @click="openEditModal('detected')">
+                <div class="kpi_card__label">
+                    <span class="kpi_card__mark"></span>
+                    <span class="kpi_card__title">
+                        <span>已检测</span>
+                        <span>构件数量</span>
+                    </span>
+                </div>
+                <div class="kpi_card__value">
                     <dv-digital-flop :config="detectedConfig" style="width:100%;height:100%;" />
                 </div>
-                <div class="metric_label">
-                    <span class="metric_label__line">已检测构件</span>
-                    <span class="metric_label__line">数量</span>
-                </div>
             </li>
-            <li class="user_Overview-item" style="color: #e3b337" @click="openEditModal('firstPass')">
-                <div class="user_Overview_nums offline bgdonghua">
+            <li class="user_Overview-item kpi_card kpi_card--qualified" @click="openEditModal('firstPass')">
+                <div class="kpi_card__label">
+                    <span class="kpi_card__mark"></span>
+                    <span class="kpi_card__title">
+                        <span>一次装配</span>
+                        <span>合格数量</span>
+                    </span>
+                </div>
+                <div class="kpi_card__value">
                     <dv-digital-flop :config="firstPassCountConfig" style="width:100%;height:100%;" />
                 </div>
-                <div class="metric_label">
-                    <span class="metric_label__line">一次装配</span>
-                    <span class="metric_label__line">合格数量</span>
-                </div>
             </li>
-            <li class="user_Overview-item" style="color: #f56c6c" @click="openEditModal('passRate')">
-                <div class="user_Overview_nums passRate bgdonghua">
-                    <dv-digital-flop :config="passRateConfig" style="width:100%;height:100%;" />
+            <li class="user_Overview-item kpi_card kpi_card--rate" @click="openEditModal('passRate')">
+                <div class="kpi_card__label">
+                    <span class="kpi_card__mark"></span>
+                    <span class="kpi_card__title">
+                        <span>一次</span>
+                        <span>合格率</span>
+                    </span>
                 </div>
-                <div class="metric_label">
-                    <span class="metric_label__line">一次</span>
-                    <span class="metric_label__line">合格率</span>
+                <div class="kpi_card__value">
+                    <dv-digital-flop :config="passRateConfig" style="width:100%;height:100%;" />
                 </div>
             </li>
         </ul>
@@ -75,8 +86,9 @@
 
 <script>
 let style = {
-    fontSize: 32,
-    fontWeight: 900,
+    fontSize: 34,
+    fontWeight: 800,
+    fontFamily: 'DIN Alternate, Bahnschrift, Microsoft YaHei, sans-serif',
     fill: '#fff'
 }
 export default {
@@ -330,178 +342,173 @@ export default {
     &--grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-template-rows: repeat(2, auto);
-        gap: 6px 8px;
+        grid-template-rows: repeat(2, minmax(68px, 1fr));
+        gap: 8px 10px;
         align-items: stretch;
+        min-height: 0;
+        flex: 1;
     }
     
     li {
-        flex: 1;
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        justify-content: flex-start;
-        padding: 2px 0;
-        gap: 6px;
         cursor: pointer;
-        transition: transform 0.2s;
+        transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
         min-width: 0;
 
         &:hover {
-            transform: scale(1.03);
-        }
-
-        .metric_label {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: flex-start;
-            gap: 2px;
-            flex: 1;
-            min-width: 0;
-            max-width: none;
-            margin: 0;
-        }
-
-        .metric_label__line {
-            display: block;
-            text-align: left;
-            line-height: 1.15;
-            font-size: clamp(12px, 0.95vw, 18px);
-            font-weight: 900;
-            color: rgba(255, 255, 255, 0.98);
-            letter-spacing: 1px;
-            word-break: break-word;
-            white-space: normal;
-            text-shadow:
-                0 0 2px rgba(0, 0, 0, 0.9),
-                0 3px 6px rgba(0, 0, 0, 0.75),
-                0 0 20px rgba(0, 0, 0, 0.5);
-        }
-
-        .user_Overview_nums {
-            width: clamp(64px, 4vw, 84px);
-            height: clamp(64px, 4vw, 84px);
-            flex-shrink: 0;
-            text-align: center;
-            line-height: 1;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            &::before {
-                content: '';
-                position: absolute;
-                width: 100%;
-                height: 100%;
-                top: 0;
-                left: 0;
-                background-size: 100% 100%;
-            }
-
-            &.bgdonghua::before {
-                animation: rotating 14s linear infinite;
-            }
-        }
-        
-        .project_name_card {
-            width: clamp(102px, 6.5vw, 132px);
-            height: clamp(64px, 4vw, 84px);
-            border-radius: 14px;
-            padding: 6px 8px;
-            box-sizing: border-box;
-            position: relative;
-            overflow: hidden;
-            background:
-                radial-gradient(110px 70px at 12% 20%, rgba(0, 234, 255, 0.22), rgba(0, 234, 255, 0) 60%),
-                radial-gradient(140px 90px at 82% 88%, rgba(0, 114, 255, 0.20), rgba(0, 114, 255, 0) 62%),
-                linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-            border: 1px solid rgba(0, 234, 255, 0.20);
-            box-shadow:
-                0 10px 22px rgba(0, 0, 0, 0.22),
-                inset 0 1px 0 rgba(255, 255, 255, 0.10);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 6px;
-            cursor: default;
-
-            &::before {
-                content: '';
-                position: absolute;
-                left: 0;
-                top: 0;
-                bottom: 0;
-                width: 3px;
-                background: linear-gradient(180deg, rgba(0, 234, 255, 0.8), rgba(0, 114, 255, 0.35));
-                box-shadow: 0 0 12px rgba(0, 234, 255, 0.35);
-            }
-
-            &__chip {
-                width: fit-content;
-                padding: 3px 8px;
-                border-radius: 999px;
-                font-size: 10px;
-                font-weight: 800;
-                letter-spacing: 0.5px;
-                color: rgba(255, 255, 255, 0.92);
-                background: rgba(0, 234, 255, 0.10);
-                border: 1px solid rgba(0, 234, 255, 0.22);
-                backdrop-filter: blur(6px);
-                margin-left: 3px;
-            }
-
-            &__name {
-                font-size: clamp(12px, 0.9vw, 16px);
-                font-weight: 900;
-                letter-spacing: 0.5px;
-                line-height: 1.15;
-                color: rgba(255, 255, 255, 0.96);
-                text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 0, 0, 0.3);
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-                margin-left: 3px;
-            }
-        }
-
-
-        .allnum {
-            &::before {
-                background-image: url("../../assets/img/left_top_lan.png");
-            }
-        }
-
-        .online {
-            &::before {
-                background-image: url("../../assets/img/left_top_lv.png");
-            }
-        }
-
-        .offline {
-            &::before {
-                background-image: url("../../assets/img/left_top_huang.png");
-            }
-        }
-        
-        .passRate {
-            &::before {
-                background-image: url("../../assets/img/left_top_lan.png");
-                filter: hue-rotate(300deg);
-            }
+            transform: translateY(-2px);
         }
     }
 }
 
-@keyframes rotating {
-    0% {
-        transform: rotate(0);
+.kpi_card {
+    --kpi-color: #00baff;
+    --kpi-rgb: 0, 186, 255;
+    min-height: 68px;
+    padding: 9px 12px 8px 14px;
+    border-radius: 6px;
+    border: 1px solid rgba(105, 194, 255, 0.14);
+    border-left-color: rgba(var(--kpi-rgb), 0.58);
+    background:
+        linear-gradient(90deg, rgba(var(--kpi-rgb), 0.14), rgba(6, 34, 96, 0.24) 40%, rgba(4, 22, 72, 0.16)),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        inset 0 -1px 0 rgba(var(--kpi-rgb), 0.10);
+    box-sizing: border-box;
+    display: grid;
+    // Keep the current compact card style: left two-line label, right aligned number.
+    grid-template-columns: minmax(100px, 1fr) minmax(82px, 1fr);
+    align-items: center;
+    column-gap: 8px;
+    position: relative;
+    overflow: hidden;
+
+    // Use a slim side accent instead of the previous round ornament to keep the panel clean.
+    &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 8px;
+        bottom: 8px;
+        width: 2px;
+        border-radius: 0 2px 2px 0;
+        background: var(--kpi-color);
+        box-shadow: 0 0 10px rgba(var(--kpi-rgb), 0.55);
     }
-    100% {
-        transform: rotate(360deg);
+
+    &::after {
+        content: '';
+        position: absolute;
+        right: 10px;
+        top: 9px;
+        width: 28px;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(var(--kpi-rgb), 0), rgba(var(--kpi-rgb), 0.45));
     }
+
+    &:hover {
+        border-color: rgba(var(--kpi-rgb), 0.38);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.10),
+            inset 0 -1px 0 rgba(var(--kpi-rgb), 0.18),
+            0 8px 18px rgba(var(--kpi-rgb), 0.10);
+    }
+
+    &--project {
+        --kpi-color: #00baff;
+        --kpi-rgb: 0, 186, 255;
+    }
+
+    &--detected {
+        --kpi-color: #07f7a8;
+        --kpi-rgb: 7, 247, 168;
+    }
+
+    &--qualified {
+        --kpi-color: #e3b337;
+        --kpi-rgb: 227, 179, 55;
+    }
+
+    &--rate {
+        --kpi-color: #42d7ff;
+        --kpi-rgb: 66, 215, 255;
+    }
+
+    &__label {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    &__mark {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--kpi-color);
+        box-shadow: 0 0 8px rgba(var(--kpi-rgb), 0.75);
+        flex-shrink: 0;
+    }
+
+    &__title {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+        font-size: clamp(14px, 0.86vw, 16px);
+        line-height: 1.18;
+        font-weight: 600;
+        letter-spacing: 1.2px;
+        color: rgba(210, 236, 255, 0.78);
+        overflow: hidden;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.34);
+
+        span {
+            display: block;
+            white-space: nowrap;
+            overflow: visible;
+            text-overflow: clip;
+
+            &:first-child {
+                font-size: 0.92em;
+                color: rgba(169, 212, 238, 0.72);
+            }
+
+            &:last-child {
+                font-weight: 700;
+                color: rgba(236, 249, 255, 0.92);
+            }
+        }
+    }
+
+    &__value {
+        min-width: 0;
+        width: 100%;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+    }
+
+    &__value ::v-deep .dv-digital-flop {
+        width: 100%;
+        height: 100%;
+    }
+
+    &__project_name {
+        min-width: 0;
+        justify-self: end;
+        font-size: clamp(18px, 1.25vw, 24px);
+        line-height: 1.08;
+        font-weight: 900;
+        color: var(--kpi-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-shadow: 0 0 14px rgba(var(--kpi-rgb), 0.38), 0 2px 8px rgba(0, 0, 0, 0.6);
+    }
+
 }
 
 /* Edit Modal Styles - Teleport 到 body，居中且不超出视口 */

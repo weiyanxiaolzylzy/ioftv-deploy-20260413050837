@@ -737,7 +737,8 @@ export default {
 // 内容
 .contents {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr) 340px;
+  // Expand business columns and compress the map column so both side panels have more readable width.
+  grid-template-columns: clamp(440px, 30vw, 520px) minmax(480px, 1fr) clamp(420px, 28vw, 500px);
   grid-template-rows: minmax(0, 1fr) minmax(220px, 380px);
   gap: 12px;
   align-items: stretch;
@@ -821,6 +822,11 @@ export default {
   .contetn_left {
     gap: 12px;
     position: relative;
+  }
+
+  @media (max-width: 1400px) {
+    // Keep the compressed-map layout usable on smaller local preview windows.
+    grid-template-columns: clamp(400px, 28vw, 440px) minmax(420px, 1fr) clamp(380px, 26vw, 420px);
   }
 }
 
