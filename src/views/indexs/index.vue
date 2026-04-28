@@ -555,6 +555,32 @@ export default {
     overflow: hidden;
     box-shadow: 0 10px 32px rgba(0,0,0,0.28);
   }
+
+  ::v-deep .glass-card.contetn_left-top.contetn_lr-item,
+  ::v-deep .glass-card.contetn_left-center.contetn_lr-item,
+  ::v-deep .glass-card.contetn_left-bottom.contetn_lr-item {
+    background-image:
+      linear-gradient(180deg, rgba(3, 16, 30, 0.18) 0%, rgba(3, 16, 30, 0.28) 100%),
+      url("/panel.png") !important;
+    background-position: center center !important;
+    background-repeat: no-repeat !important;
+    background-size: 100% 100% !important;
+  }
+
+  ::v-deep .glass-card.contetn_left-top.contetn_lr-item,
+  ::v-deep .glass-card.contetn_left-center.contetn_lr-item,
+  ::v-deep .glass-card.contetn_left-bottom.contetn_lr-item,
+  ::v-deep .glass-card.contetn_right-top.contetn_lr-item {
+    background-color: rgba(6, 18, 32, 0.08) !important;
+  }
+
+  ::v-deep .glass-card.contetn_right-top.contetn_lr-item {
+    border-radius: 20px !important;
+  }
+
+  .contetn_right {
+    background: transparent !important;
+  }
 }
 
 @media (min-aspect-ratio: 21 / 9) {

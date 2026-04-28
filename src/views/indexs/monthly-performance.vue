@@ -701,9 +701,9 @@ export default {
         font-size: 16px;
         font-weight: 900;
 
-        &.top-1 { background: #ffd700; color: #000; text-shadow: none; box-shadow: 0 0 10px rgba(255, 215, 0, 0.6); }
-        &.top-2 { background: #c0c0c0; color: #000; text-shadow: none; }
-        &.top-3 { background: #cd7f32; color: #000; text-shadow: none; }
+        &.top-1 { background: #ffd700; color: #000; text-shadow: 0 1px 3px rgba(255, 255, 255, 0.35); box-shadow: 0 0 10px rgba(255, 215, 0, 0.6); }
+        &.top-2 { background: #c0c0c0; color: #000; text-shadow: 0 1px 3px rgba(255, 255, 255, 0.35); }
+        &.top-3 { background: #cd7f32; color: #000; text-shadow: 0 1px 3px rgba(255, 255, 255, 0.3); }
       }
 
       .rank_name {
@@ -744,7 +744,7 @@ export default {
 
   /* 亮色模式适配 */
   &.light-theme {
-    .section_title { color: #37a2da; text-shadow: none; font-size: 19px; }
+    .section_title { color: #37a2da; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); font-size: 19px; }
     .pioneer_image {
       border-color: #37a2da;
       box-shadow: 0 0 20px rgba(55, 162, 218, 0.5);

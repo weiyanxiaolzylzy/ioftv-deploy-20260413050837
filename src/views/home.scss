@@ -36,6 +36,10 @@
             background: rgba(255, 255, 255, 0);
         }
 
+        .host-body {
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+        }
+
         .title-text {
             background: none !important;
             color: #ffffff !important;
@@ -48,7 +52,7 @@
 
         .timers {
             color: #000000 !important;
-            text-shadow: none;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
         }
     }
 }
@@ -61,6 +65,7 @@
     display: grid;
     grid-template-rows: clamp(68px, 7.4vh, 92px) minmax(0, 1fr);
     gap: clamp(10px, 0.85vw, 16px);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
 }
 
 .screen-shell .dashboard-shell {
@@ -160,13 +165,13 @@
             right: clamp(8px, 0.8vw, 20px);
             top: 50%;
             transform: translateY(-50%);
-            font-size: clamp(12px, 0.85vw, 18px);
-            font-weight: 500;
+            font-size: clamp(15px, 1vw, 22px);
+            font-weight: 800;
             display: flex;
             align-items: center;
             color: #e7f2ff;
-            letter-spacing: 1px;
-            text-shadow: 0 0 12px rgba(0, 186, 255, 0.35);
+            letter-spacing: 1.5px;
+            text-shadow: 0 0 14px rgba(0, 186, 255, 0.42);
             white-space: nowrap;
 
             .blq-icon-shezhi02 {

@@ -85,6 +85,7 @@
             :emptyTitle="plyEmptyTitle"
             :emptySub="plyEmptySub"
             :showUpload="true"
+            :transparentBackground="true"
             @loaded="onPlyLoaded"
           />
         </div>
@@ -250,6 +251,20 @@ export default {
   },
 
   methods: {
+    resolveComponentCode(...sources) {
+      for (const source of sources) {
+        if (!source || typeof source !== 'object') continue;
+        const code =
+          source.componentId ||
+          source.ifcGlobalId ||
+          source.globalId ||
+          source.ifcElementId ||
+          source.expressID ||
+          '';
+        if (code) return String(code);
+      }
+      return '---';
+    },
     // ─── 从 localStorage 读取今日检测计划 ──────────────────────────────────
     loadTodayPlan() {
       try {
@@ -309,12 +324,13 @@ export default {
         type: item.type || '',
       };
       this.currentComponent = {
-        id: item.componentName || item.ifcGlobalId || item.ifcElementId || '---',
+        id: this.resolveComponentCode(item),
         status: '待检测',
         issues: [],
       };
-      if (item.componentName) {
-        localStorage.setItem('current_component_mark', item.componentName);
+      const componentCode = this.resolveComponentCode(item);
+      if (componentCode && componentCode !== '---') {
+        localStorage.setItem('current_component_mark', componentCode);
       }
     },
 
@@ -323,7 +339,7 @@ export default {
       this.selectedElement = elementInfo || null;
       const item = this.currentPlanItem;
       this.currentComponent = {
-        id: (item && item.componentName) || (elementInfo && (elementInfo.name || elementInfo.globalId)) || expressID || '---',
+        id: this.resolveComponentCode(item, elementInfo, { expressID }),
         status: '待检测',
         issues: [],
       };
@@ -388,7 +404,7 @@ export default {
           projectName: '',
           projectId: sel.projectId || '',
           componentName: sel.name || '',
-          componentId: '',
+          componentId: sel.globalId || String(sel.expressID || ''),
           type: '',
           team: '',
           inspector: '',
@@ -467,7 +483,7 @@ export default {
         const { reason, expressID, name, globalId } = data;
         this.selectedElement = { expressID, globalId: globalId || '', name: name || '', type: '' };
         this.currentComponent = {
-          id: name || globalId || expressID || '---',
+          id: this.resolveComponentCode({ globalId, expressID }),
           status: reason === '合格' ? '合格' : '不合格',
           issues: reason && reason !== '合格' ? [reason] : [],
         };
@@ -506,29 +522,29 @@ export default {
     .model_view {
       flex: 1 1 0;
       min-width: 0;
-      background: linear-gradient(135deg, rgba(0, 40, 60, 0.5) 0%, rgba(0, 20, 40, 0.3) 100%);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(0, 186, 255, 0.2);
+      background: linear-gradient(135deg, rgba(0, 40, 60, 0.32) 0%, rgba(0, 20, 40, 0.14) 100%);
+      backdrop-filter: blur(50px);
+      -webkit-backdrop-filter: blur(5px);
+      border: 1px solid rgba(0, 186, 255, 0.14);
       border-radius: 8px;
       display: flex;
       flex-direction: column;
       position: relative;
       overflow: hidden;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 20px rgba(0, 0, 0, 0.25);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 4px 18px rgba(0, 0, 0, 0.18);
 
       .view_title {
         height: 42px;
         flex-shrink: 0;
-        background: linear-gradient(90deg, rgba(0, 186, 255, 0.15) 0%, rgba(0, 186, 255, 0.05) 100%);
+        background: linear-gradient(90deg, rgba(0, 186, 255, 0.1) 0%, rgba(0, 186, 255, 0.025) 100%);
         display: flex;
         align-items: center;
         padding: 0 16px;
-        font-size: 19px;
-        color: #00eaff;
+        font-size: 17px;
+        color: #ffffff;
         font-weight: 700;
         letter-spacing: 1px;
-        border-bottom: 1px solid rgba(0, 186, 255, 0.15);
+        border-bottom: 1px solid rgba(0, 186, 255, 0.1);
 
         &--with-action {
           justify-content: space-between;
@@ -539,6 +555,8 @@ export default {
           display: flex;
           align-items: center;
           min-width: 0;
+          font-size: 16px;
+          color: #ffffff;
         }
 
         .btn-expand-ifc {

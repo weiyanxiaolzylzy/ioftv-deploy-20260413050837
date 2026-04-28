@@ -1,15 +1,7 @@
 <template>
-  <div class="ply-viewer" ref="containerRef">
+  <div class="ply-viewer" :class="{ 'ply-viewer--transparent': transparentBackground }" ref="containerRef">
     <!-- Three.js Canvas -->
     <canvas ref="canvasRef" class="ply-canvas"></canvas>
-
-    <!-- Loading overlay -->
-    <transition name="fade">
-      <div v-if="loading" class="ply-overlay">
-        <div class="ply-spinner"></div>
-        <div class="ply-loading-text">{{ loadingText }}</div>
-      </div>
-    </transition>
 
     <!-- Empty state -->
     <div v-if="!hasData && !loading" class="ply-empty">
@@ -115,6 +107,7 @@ export default {
     pointCloudData: { type: Array, default: () => [] },
     plyInfoData: { type: Object, default: null },
     backgroundColor: { type: Number, default: 0x0a1929 },
+    transparentBackground: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -183,7 +176,7 @@ export default {
 
       // Scene
       this.scene = new THREE.Scene();
-      this.scene.background = new THREE.Color(this.backgroundColor);
+      this.scene.background = this.transparentBackground ? null : new THREE.Color(this.backgroundColor);
 
       // Camera
       this.camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 100000);
@@ -194,8 +187,12 @@ export default {
       this.renderer = new THREE.WebGLRenderer({
         canvas: this.canvasRef,
         antialias: true,
-        alpha: false,
+        alpha: this.transparentBackground,
       });
+      if (this.transparentBackground) {
+        this.renderer.setClearColor(0x000000, 0);
+        this.renderer.domElement.style.background = 'transparent';
+      }
       this.renderer.setSize(w, h);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -561,11 +558,19 @@ export default {
   font-size: 14px;
 }
 
+.ply-viewer--transparent {
+  background: transparent;
+}
+
 .ply-canvas {
   width: 100% !important;
   height: 100% !important;
   display: block;
   cursor: grab;
+}
+
+.ply-viewer--transparent .ply-canvas {
+  background: transparent !important;
 }
 .ply-canvas:active { cursor: grabbing; }
 

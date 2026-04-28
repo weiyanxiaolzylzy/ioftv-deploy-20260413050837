@@ -35,8 +35,8 @@
                     <dv-digital-flop :config="detectedConfig" style="width:100%;height:100%;" />
                 </div>
                 <div class="metric_label">
-                    <span class="metric_label__line">已检测构件</span>
-                    <span class="metric_label__line">数量</span>
+                    <span class="metric_label__line">已检测</span>
+                    <span class="metric_label__line">构件数量</span>
                 </div>
             </li>
             <li class="user_Overview-item" style="color: #e3b337" @click="openEditModal('firstPass')">
@@ -211,7 +211,7 @@ export default {
         nextMode = 'compact';
       }
 
-      const nextFontSize = nextMode === 'tight' ? 22 : nextMode === 'compact' ? 26 : 32;
+      const nextFontSize = nextMode === 'tight' ? 18 : nextMode === 'compact' ? 22 : 28;
       const modeChanged = this.layoutMode !== nextMode;
       const fontChanged = this.metricFontSize !== nextFontSize;
 
@@ -401,9 +401,9 @@ export default {
 
     &--grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-template-rows: repeat(2, minmax(0, 1fr));
-        gap: 6px 8px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-rows: minmax(0, 1fr);
+        gap: 6px;
         align-items: stretch;
         min-height: 0;
     }
@@ -411,11 +411,11 @@ export default {
     li {
         flex: 1;
         display: flex;
-        flex-direction: row;
+        flex-direction: column;
         align-items: center;
-        justify-content: flex-start;
-        padding: 2px 0;
-        gap: 6px;
+        justify-content: center;
+        padding: 2px 4px;
+        gap: 8px;
         cursor: pointer;
         transition: transform 0.2s;
         min-width: 0;
@@ -430,9 +430,9 @@ export default {
             display: flex;
             flex-direction: column;
             justify-content: center;
-            align-items: flex-start;
+            align-items: center;
             gap: 2px;
-            flex: 1;
+            flex: 0 1 auto;
             min-width: 0;
             max-width: none;
             margin: 0;
@@ -440,14 +440,14 @@ export default {
 
         .metric_label__line {
             display: block;
-            text-align: left;
+            text-align: center;
             line-height: 1.15;
-            font-size: clamp(12px, 0.95vw, 18px);
+            font-size: clamp(11px, 0.8vw, 16px);
             font-weight: 900;
             color: rgba(255, 255, 255, 0.98);
-            letter-spacing: 1px;
-            word-break: break-word;
-            white-space: normal;
+            letter-spacing: 0.8px;
+            word-break: keep-all;
+            white-space: nowrap;
             text-shadow:
                 0 0 2px rgba(0, 0, 0, 0.9),
                 0 3px 6px rgba(0, 0, 0, 0.75),
@@ -455,8 +455,8 @@ export default {
         }
 
         .user_Overview_nums {
-            width: clamp(64px, 4vw, 84px);
-            height: clamp(64px, 4vw, 84px);
+            width: clamp(56px, 3.4vw, 76px);
+            height: clamp(56px, 3.4vw, 76px);
             flex-shrink: 0;
             text-align: center;
             line-height: 1;
@@ -481,8 +481,8 @@ export default {
         }
         
         .project_name_card {
-            width: clamp(102px, 6.5vw, 132px);
-            height: clamp(64px, 4vw, 84px);
+            width: min(100%, 150px);
+            height: clamp(56px, 3.4vw, 76px);
             max-width: 100%;
             border-radius: 14px;
             padding: 6px 8px;
@@ -587,12 +587,12 @@ export default {
     }
 
     .user_Overview--grid {
-        gap: 5px 6px;
+        gap: 5px;
     }
 
     .user_Overview li {
-        gap: 4px;
-        padding: 1px 0;
+        gap: 5px;
+        padding: 1px 2px;
     }
 
     .user_Overview .metric_label {
@@ -606,13 +606,13 @@ export default {
     }
 
     .user_Overview .user_Overview_nums {
-        width: 58px;
-        height: 58px;
+        width: 52px;
+        height: 52px;
     }
 
     .user_Overview .project_name_card {
-        width: 108px;
-        height: 58px;
+        width: min(100%, 120px);
+        height: 52px;
         padding: 5px 7px;
         gap: 4px;
         border-radius: 12px;
@@ -660,11 +660,10 @@ export default {
     }
 
     .user_Overview li {
-        flex-direction: column;
         justify-content: center;
         align-items: center;
         gap: 4px;
-        padding: 0;
+        padding: 0 1px;
 
         &:hover {
             transform: none;
@@ -685,13 +684,13 @@ export default {
     }
 
     .user_Overview .user_Overview_nums {
-        width: 52px;
-        height: 52px;
+        width: 46px;
+        height: 46px;
     }
 
     .user_Overview .project_name_card {
-        width: min(100%, 118px);
-        height: 52px;
+        width: min(100%, 104px);
+        height: 46px;
         padding: 4px 6px;
         gap: 3px;
         border-radius: 10px;

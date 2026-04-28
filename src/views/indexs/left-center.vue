@@ -63,6 +63,22 @@
 
 <script>
 export default {
+  methods: {
+    resolveComponentCode(payload) {
+      if (!payload || typeof payload !== 'object') return '---';
+      const element = payload.element || {};
+      return String(
+        payload.componentId ||
+        payload.ifcGlobalId ||
+        payload.globalId ||
+        payload.ifcElementId ||
+        payload.expressID ||
+        element.globalId ||
+        element.expressID ||
+        '---'
+      );
+    }
+  },
   data() {
     return {
       viewMode: 'binocular',
@@ -73,7 +89,7 @@ export default {
   created() {
     if (this.$bus) {
       this.$bus.$on('component-ifc-sync', (p) => {
-        this.currentMark = (p && p.componentName) || '---';
+        this.currentMark = this.resolveComponentCode(p);
       });
     }
     const stored = localStorage.getItem('current_component_mark');
