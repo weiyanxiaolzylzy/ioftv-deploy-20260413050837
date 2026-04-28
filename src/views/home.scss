@@ -80,20 +80,22 @@
 
         .title_main {
             min-width: 0;
-            max-width: min(72vw, 1240px);
+            max-width: min(82vw, 1240px);
         }
 
-        .title_tools {
+        .title_controls {
             position: absolute;
-            right: clamp(8px, 0.8vw, 20px);
+            left: clamp(8px, 0.8vw, 20px);
             top: 50%;
-            transform: translateY(-50%);
+            transform: translateY(-30%);
             display: flex;
             align-items: center;
-            gap: clamp(12px, 0.85vw, 18px);
             z-index: 2;
         }
-
+        .title_controls * {
+            font-size: 1rem;
+            transform: scale(1.05);
+        }
         .guang {
             position: absolute;
             inset-inline: 0;
@@ -141,6 +143,10 @@
         }
 
         .timers {
+            position: absolute;
+            right: clamp(8px, 0.8vw, 20px);
+            top: 50%;
+            transform: translateY(-50%);
             font-size: clamp(12px, 0.85vw, 18px);
             font-weight: 500;
             display: flex;
@@ -156,10 +162,7 @@
         }
 
         .timers--standalone {
-            position: absolute;
             right: clamp(8px, 0.8vw, 20px);
-            top: 50%;
-            transform: translateY(-50%);
         }
     }
 
@@ -337,8 +340,8 @@
         font-size: clamp(22px, 1.5vw, 32px);
     }
 
-    .screen-shell .host-body .title_wrap .title_tools {
-        gap: 10px;
+    .screen-shell .host-body .title_wrap .title_controls {
+        left: 8px;
     }
 
     .screen-shell .dashboard-controls {

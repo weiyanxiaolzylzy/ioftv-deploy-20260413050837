@@ -546,7 +546,7 @@ export default {
   .pioneer_section {
     width: 100%;
     flex: 0 0 auto;
-    max-height: 42%;
+    max-height: 66%;
     min-height: 0;
     overflow: hidden;
     display: flex;

@@ -21,15 +21,7 @@
           <div class="youjuxing"></div>
           <div class="zuojuxing2"></div>
           <div class="guang"></div>
-          <div class="d-flex jc-center title_main">
-            <div class="title">
-              <img src="@/assets/img/logo/logo.png" class="header-logo" alt="Logo">
-              <span class="title-text"
-                >山西钢构科工钢结构数字孪生智能检测系统</span
-              >
-            </div>
-          </div>
-          <div v-if="showDashboardControls" class="title_tools">
+          <div v-if="showDashboardControls" class="title_controls">
             <div class="dashboard-controls">
               <div class="theme-toggle-btn" @click="toggleTheme" :title="themeHint">
                 <span v-if="themeMode === 'light'">🌙</span>
@@ -40,11 +32,16 @@
                 钢结构尺寸检测系统
               </div>
             </div>
-            <div class="timers">
-              {{ dateYear }} {{ dateWeek }} {{ dateDay }}
+          </div>
+          <div class="d-flex jc-center title_main">
+            <div class="title">
+              <img src="@/assets/img/logo/logo.png" class="header-logo" alt="Logo">
+              <span class="title-text"
+                >山西钢构科工钢结构数字孪生智能检测系统</span
+              >
             </div>
           </div>
-          <div v-else class="timers timers--standalone">
+          <div class="timers" :class="{ 'timers--standalone': !showDashboardControls }">
             {{ dateYear }} {{ dateWeek }} {{ dateDay }}
           </div>
         </div>
