@@ -7,9 +7,9 @@
         <div class="view_title view_title--with-action">
           <span class="view_title__text"><span class="dot"></span> 构件模型</span>
           <div v-if="todayPlanList.length > 0" class="component-nav">
-            <button type="button" class="btn-nav" :disabled="currentPlanIndex <= 0" @click="prevComponent">‹ 上一条</button>
+            <button type="button" class="btn-nav" :disabled="currentPlanIndex <= 0" @click="prevComponent">‹ 上</button>
             <span class="nav-counter">{{ currentPlanIndex + 1 }}/{{ todayPlanList.length }}</span>
-            <button type="button" class="btn-nav" :disabled="currentPlanIndex >= todayPlanList.length - 1" @click="nextComponent">下一条 ›</button>
+            <button type="button" class="btn-nav" :disabled="currentPlanIndex >= todayPlanList.length - 1" @click="nextComponent">下 ›</button>
           </div>
         </div>
         <div class="canvas_wrap component_ifc_wrap">
@@ -518,13 +518,13 @@ export default {
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 20px rgba(0, 0, 0, 0.25);
 
       .view_title {
-        height: 36px;
+        height: 42px;
         flex-shrink: 0;
         background: linear-gradient(90deg, rgba(0, 186, 255, 0.15) 0%, rgba(0, 186, 255, 0.05) 100%);
         display: flex;
         align-items: center;
-        padding: 0 14px;
-        font-size: 17px;
+        padding: 0 16px;
+        font-size: 19px;
         color: #00eaff;
         font-weight: 700;
         letter-spacing: 1px;
@@ -543,8 +543,8 @@ export default {
 
         .btn-expand-ifc {
           flex-shrink: 0;
-          font-size: 11px;
-          padding: 3px 10px;
+          font-size: 13px;
+          padding: 4px 12px;
           border-radius: 4px;
           border: 1px solid rgba(73, 231, 194, 0.45);
           background: rgba(73, 231, 194, 0.12);
@@ -564,8 +564,8 @@ export default {
           flex-shrink: 0;
 
           .btn-nav {
-            font-size: 11px;
-            padding: 2px 8px;
+            font-size: 12px;
+            padding: 3px 10px;
             border-radius: 4px;
             border: 1px solid rgba(0, 186, 255, 0.4);
             background: rgba(0, 186, 255, 0.1);
@@ -583,9 +583,9 @@ export default {
           }
 
           .nav-counter {
-            font-size: 11px;
+            font-size: 13px;
             color: rgba(0, 212, 255, 0.6);
-            min-width: 28px;
+            min-width: 36px;
             text-align: center;
           }
         }
@@ -630,27 +630,28 @@ export default {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 6px;
-          color: rgba(255, 255, 255, 0.25);
-          font-size: 13px;
+          gap: 8px;
+          color: rgba(255, 255, 255, 0.46);
+          font-size: 16px;
+          line-height: 1.6;
           text-align: center;
-          padding: 10px;
+          padding: 16px 14px;
 
           .placeholder-icon {
-            font-size: 28px;
+            font-size: 36px;
             margin-bottom: 4px;
-            opacity: 0.6;
+            opacity: 0.72;
           }
 
           .placeholder-sub {
-            font-size: 10px;
-            color: rgba(255, 255, 255, 0.15);
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.28);
           }
 
           &--compact {
             gap: 10px;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.45);
+            font-size: 15px;
+            color: rgba(255, 255, 255, 0.56);
           }
         }
 
@@ -674,7 +675,7 @@ export default {
       }
 
       .detection_info_wrap {
-        padding: 8px 10px;
+        padding: 12px;
         align-items: stretch;
         justify-content: flex-start;
         overflow-y: auto;
@@ -686,7 +687,7 @@ export default {
           flex-direction: column;
           justify-content: space-evenly;
           align-items: stretch;
-          gap: 8px;
+          gap: 10px;
           min-height: 0;
 
           .divider {
@@ -703,28 +704,28 @@ export default {
             justify-content: center;
             background: rgba(255, 255, 255, 0.02);
             border-radius: 4px;
-            padding: 8px 6px;
+            padding: 10px 8px;
 
             .label {
-              font-size: 11px;
+              font-size: 13px;
               color: rgba(255, 255, 255, 0.85);
-              margin-bottom: 4px;
+              margin-bottom: 6px;
             }
 
             .value {
-              font-size: 15px;
+              font-size: 18px;
               color: #fff;
               font-weight: bold;
               text-align: center;
               word-break: break-all;
 
               &.small {
-                font-size: 11px;
+                font-size: 14px;
               }
 
               &.mono {
                 font-family: 'Courier New', monospace;
-                font-size: 9px;
+                font-size: 12px;
               }
 
               &.success { color: #67c23a; }
@@ -735,7 +736,7 @@ export default {
               .value {
                 color: #00baff;
                 font-family: 'Arial', sans-serif;
-                font-size: 16px;
+                font-size: 21px;
               }
             }
 
@@ -755,8 +756,8 @@ export default {
                 .issue_tag {
                   background: rgba(245, 108, 108, 0.2);
                   color: #f56c6c;
-                  font-size: 11px;
-                  padding: 3px 8px;
+                  font-size: 13px;
+                  padding: 4px 10px;
                   border-radius: 2px;
                   border: 1px solid rgba(245, 108, 108, 0.5);
                   text-align: center;
@@ -769,10 +770,10 @@ export default {
 
             &.detail {
               background: rgba(0, 212, 255, 0.04);
-              padding: 6px;
+              padding: 8px;
 
               .value {
-                font-size: 11px;
+                font-size: 13px;
                 font-weight: normal;
               }
             }

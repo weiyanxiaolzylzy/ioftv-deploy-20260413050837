@@ -343,9 +343,9 @@ export default {
   background: transparent;
   border: none;
   color: rgba(0, 186, 255, 0.5);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
-  padding: 6px 12px;
+  padding: 7px 14px;
   cursor: pointer;
   border-radius: 6px;
   letter-spacing: 0.04em;
@@ -370,9 +370,9 @@ export default {
   background: rgba(0, 186, 255, 0.1);
   border: 1px solid rgba(0, 186, 255, 0.3);
   color: rgba(0, 212, 255, 0.85);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 5px;
   cursor: pointer;
   letter-spacing: 0.03em;
@@ -421,14 +421,14 @@ export default {
 }
 
 .empty-text {
-  font-size: 13px;
+  font-size: 16px;
   color: rgba(0, 186, 255, 0.65);
   font-weight: 600;
   letter-spacing: 0.05em;
 }
 
 .empty-sub {
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(0, 186, 255, 0.35);
 }
 
@@ -465,7 +465,7 @@ export default {
   display: flex;
   align-items: center;
   border-bottom: 1px solid rgba(0, 186, 255, 0.07);
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 10px 0 8px;
   box-sizing: border-box;
   transition: background 0.18s;
@@ -491,7 +491,7 @@ export default {
 
     .cell {
       color: rgba(0, 210, 255, 0.95);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 900;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -521,7 +521,7 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.8);
   padding: 0 8px;
@@ -536,10 +536,10 @@ export default {
     align-items: center;
     gap: 8px;
   }
-  &--type    { flex: 1.3; min-width: 0; color: rgba(167, 139, 250, 0.95); font-size: 12px; font-weight: 600; }
-  &--num     { flex: 1.5; min-width: 0; color: rgba(255, 255, 255, 0.75); font-size: 12px; font-weight: 600; }
-  &--team    { flex: 1.0; min-width: 0; color: rgba(255, 200, 80, 0.95); font-size: 12px; font-weight: 700; }
-  &--date    { flex: 0.9; min-width: 0; color: rgba(255, 200, 80, 0.95); font-size: 12px; font-weight: 700; white-space: nowrap; }
+  &--type    { flex: 1.3; min-width: 0; color: rgba(167, 139, 250, 0.95); font-size: 14px; font-weight: 600; }
+  &--num     { flex: 1.5; min-width: 0; color: rgba(255, 255, 255, 0.75); font-size: 14px; font-weight: 600; }
+  &--team    { flex: 1.0; min-width: 0; color: rgba(255, 200, 80, 0.95); font-size: 14px; font-weight: 700; }
+  &--date    { flex: 0.9; min-width: 0; color: rgba(255, 200, 80, 0.95); font-size: 14px; font-weight: 700; white-space: nowrap; }
 }
 
 /* ── 项目名前圆点 ── */

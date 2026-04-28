@@ -17,11 +17,10 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: [
+    exclude: [
       'web-ifc',
       'web-ifc-three',
-      'web-ifc-viewer',
-      'three'
+      'web-ifc-viewer'
     ]
   },
   build: {

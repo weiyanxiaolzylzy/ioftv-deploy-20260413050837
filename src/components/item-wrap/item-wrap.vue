@@ -43,6 +43,8 @@ export default {
   position: relative;
   border-radius: 12px;
   overflow: hidden;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.92);
   
   /* 玻璃卡片主效果 */
   background: linear-gradient(
@@ -79,7 +81,7 @@ export default {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 14px 20px 10px;
+    padding: 15px 20px 11px;
     gap: 16px;
 
     .header-line {
@@ -95,9 +97,9 @@ export default {
     }
 
     .card-title {
-      font-size: 30px;
+      font-size: 28px;
       font-weight: bold !important;
-      letter-spacing: 4px;
+      letter-spacing: 5px;
       margin: 0;
       color: #ffffff !important;
       -webkit-text-fill-color: #ffffff !important;
@@ -115,6 +117,7 @@ export default {
     z-index: 1;
     isolation: isolate;
     contain: layout style;
+    line-height: 1.5;
 
     &.has-title {
       height: calc(100% - 56px);

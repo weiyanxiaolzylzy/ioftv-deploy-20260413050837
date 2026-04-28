@@ -1,6 +1,37 @@
 import * as THREE from 'three';
 import { IfcViewerAPI } from 'web-ifc-viewer';
 
+function getWasmBaseUrl() {
+    return new URL('./wasm/', window.location.href).href;
+}
+
+function setupWasmPath(ifcManager) {
+    try {
+        const inner = ifcManager && ifcManager.loader && ifcManager.loader.ifcManager;
+        const api = inner && inner.state && inner.state.api;
+        if (!api || typeof api.SetWasmPath !== 'function') {
+            console.warn('[IFC] SetWasmPath not found on api');
+            return;
+        }
+
+        const base = getWasmBaseUrl();
+        api.SetWasmPath(base, true);
+
+        if (api.__customWasmInitPatched || typeof api.Init !== 'function') {
+            return;
+        }
+
+        const originalInit = api.Init.bind(api);
+        api.Init = (customLocateFileHandler, forceSingleThread) => {
+            const locateFn = customLocateFileHandler || ((path) => base + path);
+            return originalInit(locateFn, forceSingleThread ?? true);
+        };
+        api.__customWasmInitPatched = true;
+    } catch (e) {
+        console.warn('[IFC] Failed to patch wasm init', e);
+    }
+}
+
 // ============================================================
 // 1. 初始化主查看器
 // ============================================================
@@ -9,9 +40,7 @@ const viewer = new IfcViewerAPI({
     container,
     backgroundColor: new THREE.Color(0xe8ecef)
 });
-// Use a viewer-local wasm path so the iframe app always loads the
-// wasm files that match its own bundled web-ifc runtime.
-viewer.IFC.setWasmPath('./wasm/');
+setupWasmPath(viewer.IFC);
 
 // ============================================================
 // 2. 初始化构件 3D 视图小窗口
@@ -40,7 +69,7 @@ function initElementViewer() {
         container: newContainer,
         backgroundColor: new THREE.Color(0xe8ecef)
     });
-    elementViewer.IFC.setWasmPath('./wasm/');
+    setupWasmPath(elementViewer.IFC);
     elementViewerLoaded = true;
 
     setupElementViewerControls(newContainer);

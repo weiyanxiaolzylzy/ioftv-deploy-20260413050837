@@ -6,7 +6,7 @@
  * @FilePath: \web-pc\src\pages\big-screen\view\indexs\left-center.vue
 -->
 <template>
-    <div class="user_Overview_container">
+    <div ref="overviewContainer" class="user_Overview_container" :class="`is-${layoutMode}`">
         <div class="overview_toolbar">
             <div class="scope_toggle">
                 <button class="scope_btn" :class="{ 'is-active': scope === 'all' }" @click="scope = 'all'">总项目</button>
@@ -88,6 +88,10 @@ export default {
             scope: 'all',
             selectedProjectId: '',
             projects: [],
+            layoutMode: 'regular',
+            metricFontSize: 32,
+            resizeObserver: null,
+            usingWindowResizeFallback: false,
             projectConfig: {
                 number: [0],
                 content: '{nt}',
@@ -150,10 +154,23 @@ export default {
       this.$bus.$on('project-list-update', this.onProjectListUpdate);
     }
   },
+  mounted() {
+    this.$nextTick(() => {
+      this.setupResponsiveLayout();
+    });
+  },
   beforeDestroy() {
     if (this.$bus) {
       this.$bus.$off('project-change', this.onProjectChange);
       this.$bus.$off('project-list-update', this.onProjectListUpdate);
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    if (this.usingWindowResizeFallback) {
+      window.removeEventListener('resize', this.updateResponsiveLayout);
+      this.usingWindowResizeFallback = false;
     }
   },
   watch: {
@@ -169,6 +186,68 @@ export default {
     }
   },
   methods: {
+    setupResponsiveLayout() {
+      this.updateResponsiveLayout();
+      if (typeof ResizeObserver === 'function' && this.$refs.overviewContainer) {
+        this.resizeObserver = new ResizeObserver(() => {
+          this.updateResponsiveLayout();
+        });
+        this.resizeObserver.observe(this.$refs.overviewContainer);
+        return;
+      }
+      window.addEventListener('resize', this.updateResponsiveLayout);
+      this.usingWindowResizeFallback = true;
+    },
+    updateResponsiveLayout() {
+      const container = this.$refs.overviewContainer;
+      if (!container) return;
+      const width = container.clientWidth || 0;
+      const height = container.clientHeight || 0;
+
+      let nextMode = 'regular';
+      if (width < 330 || height < 210) {
+        nextMode = 'tight';
+      } else if (width < 420 || height < 255) {
+        nextMode = 'compact';
+      }
+
+      const nextFontSize = nextMode === 'tight' ? 22 : nextMode === 'compact' ? 26 : 32;
+      const modeChanged = this.layoutMode !== nextMode;
+      const fontChanged = this.metricFontSize !== nextFontSize;
+
+      if (!modeChanged && !fontChanged) return;
+
+      this.layoutMode = nextMode;
+      this.metricFontSize = nextFontSize;
+      this.refreshConfigs();
+    },
+    buildFlopConfig(number, fill, suffix = '') {
+      return {
+        number: [number],
+        content: `{nt}${suffix}`,
+        style: {
+          ...style,
+          fontSize: this.metricFontSize,
+          fill,
+        },
+      };
+    },
+    setMetricConfig(type, number) {
+      switch (type) {
+        case 'project':
+          this.projectConfig = this.buildFlopConfig(number, '#00baff');
+          break;
+        case 'detected':
+          this.detectedConfig = this.buildFlopConfig(number, '#07f7a8');
+          break;
+        case 'firstPass':
+          this.firstPassCountConfig = this.buildFlopConfig(number, '#e3b337');
+          break;
+        case 'passRate':
+          this.passRateConfig = this.buildFlopConfig(number, '#00baff', '%');
+          break;
+      }
+    },
     onProjectListUpdate(projects) {
       if (Array.isArray(projects)) {
         this.projects = projects;
@@ -218,12 +297,10 @@ export default {
     },
     refreshConfigs() {
       const stats = this.getStats();
-      if (this.scope === 'all') {
-        this.projectConfig = { ...this.projectConfig, number: [stats.projectCount] };
-      }
-      this.detectedConfig = { ...this.detectedConfig, number: [stats.inspectedCount] };
-      this.firstPassCountConfig = { ...this.firstPassCountConfig, number: [stats.qualifiedCount] };
-      this.passRateConfig = { ...this.passRateConfig, number: [stats.rate] };
+      this.setMetricConfig('project', stats.projectCount);
+      this.setMetricConfig('detected', stats.inspectedCount);
+      this.setMetricConfig('firstPass', stats.qualifiedCount);
+      this.setMetricConfig('passRate', stats.rate);
     },
         openEditModal(type) {
             // 暂时禁用手动编辑，或者让手动编辑只在没有数据时生效
@@ -244,20 +321,7 @@ export default {
         },
         saveEdit() {
             const newVal = Number(this.editValue);
-            switch(this.currentEditType) {
-                case 'project': 
-                    this.projectConfig = { ...this.projectConfig, number: [newVal] };
-                    break;
-                case 'detected': 
-                    this.detectedConfig = { ...this.detectedConfig, number: [newVal] };
-                    break;
-                case 'firstPass': 
-                    this.firstPassCountConfig = { ...this.firstPassCountConfig, number: [newVal] };
-                    break;
-                case 'passRate': 
-                    this.passRateConfig = { ...this.passRateConfig, number: [newVal] };
-                    break;
-            }
+            this.setMetricConfig(this.currentEditType, newVal);
             this.closeModal();
         }
     }
@@ -267,20 +331,24 @@ export default {
 <style lang='scss' scoped>
 .user_Overview_container {
     height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
     padding: 6px 4px 4px;
     box-sizing: border-box;
     gap: 6px;
+    overflow: hidden;
 }
 
 .overview_toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 6px;
     padding: 0 2px;
+    flex-shrink: 0;
 }
 
 .scope_toggle {
@@ -313,6 +381,8 @@ export default {
 .project_select {
     height: 28px;
     max-width: 190px;
+    flex: 1 1 150px;
+    min-width: 0;
     padding: 0 8px;
     border-radius: 8px;
     border: 1px solid rgba(0, 186, 255, 0.25);
@@ -326,13 +396,16 @@ export default {
     margin: 0;
     padding: 0;
     list-style: none;
+    flex: 1;
+    min-height: 0;
 
     &--grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-template-rows: repeat(2, auto);
+        grid-template-rows: repeat(2, minmax(0, 1fr));
         gap: 6px 8px;
         align-items: stretch;
+        min-height: 0;
     }
     
     li {
@@ -346,6 +419,8 @@ export default {
         cursor: pointer;
         transition: transform 0.2s;
         min-width: 0;
+        min-height: 0;
+        overflow: hidden;
 
         &:hover {
             transform: scale(1.03);
@@ -408,6 +483,7 @@ export default {
         .project_name_card {
             width: clamp(102px, 6.5vw, 132px);
             height: clamp(64px, 4vw, 84px);
+            max-width: 100%;
             border-radius: 14px;
             padding: 6px 8px;
             box-sizing: border-box;
@@ -492,6 +568,150 @@ export default {
                 filter: hue-rotate(300deg);
             }
         }
+    }
+}
+
+.user_Overview_container.is-compact {
+    gap: 5px;
+
+    .scope_btn {
+        padding: 4px 8px;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+    }
+
+    .project_select {
+        height: 26px;
+        max-width: 160px;
+        font-size: 11px;
+    }
+
+    .user_Overview--grid {
+        gap: 5px 6px;
+    }
+
+    .user_Overview li {
+        gap: 4px;
+        padding: 1px 0;
+    }
+
+    .user_Overview .metric_label {
+        gap: 1px;
+    }
+
+    .user_Overview .metric_label__line {
+        font-size: 11px;
+        line-height: 1.08;
+        letter-spacing: 0.5px;
+    }
+
+    .user_Overview .user_Overview_nums {
+        width: 58px;
+        height: 58px;
+    }
+
+    .user_Overview .project_name_card {
+        width: 108px;
+        height: 58px;
+        padding: 5px 7px;
+        gap: 4px;
+        border-radius: 12px;
+    }
+
+    .user_Overview .project_name_card__chip {
+        padding: 2px 6px;
+        font-size: 9px;
+    }
+
+    .user_Overview .project_name_card__name {
+        font-size: 11px;
+        line-height: 1.08;
+    }
+}
+
+.user_Overview_container.is-tight {
+    gap: 4px;
+
+    .overview_toolbar {
+        gap: 4px;
+    }
+
+    .scope_toggle {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .scope_btn {
+        flex: 1 1 0;
+        padding: 4px 6px;
+        font-size: 11px;
+        letter-spacing: 0.4px;
+    }
+
+    .project_select {
+        width: 100%;
+        max-width: none;
+        height: 26px;
+        font-size: 11px;
+    }
+
+    .user_Overview--grid {
+        gap: 4px;
+    }
+
+    .user_Overview li {
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 4px;
+        padding: 0;
+
+        &:hover {
+            transform: none;
+        }
+    }
+
+    .user_Overview .metric_label {
+        align-items: center;
+        text-align: center;
+        gap: 1px;
+    }
+
+    .user_Overview .metric_label__line {
+        text-align: center;
+        font-size: 11px;
+        line-height: 1.05;
+        letter-spacing: 0.3px;
+    }
+
+    .user_Overview .user_Overview_nums {
+        width: 52px;
+        height: 52px;
+    }
+
+    .user_Overview .project_name_card {
+        width: min(100%, 118px);
+        height: 52px;
+        padding: 4px 6px;
+        gap: 3px;
+        border-radius: 10px;
+    }
+
+    .user_Overview .project_name_card::before {
+        width: 2px;
+    }
+
+    .user_Overview .project_name_card__chip {
+        padding: 2px 5px;
+        font-size: 8px;
+        margin-left: 2px;
+    }
+
+    .user_Overview .project_name_card__name {
+        margin-left: 2px;
+        font-size: 10px;
+        line-height: 1.05;
+        -webkit-line-clamp: 2;
     }
 }
 

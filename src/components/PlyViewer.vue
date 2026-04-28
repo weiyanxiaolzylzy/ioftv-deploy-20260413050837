@@ -558,6 +558,7 @@ export default {
   overflow: hidden;
   border-radius: 4px;
   background: #0a1929;
+  font-size: 14px;
 }
 
 .ply-canvas {
@@ -576,29 +577,33 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   pointer-events: none;
+  padding: 16px;
+  text-align: center;
 }
 .ply-empty-icon {
-  font-size: 36px;
+  font-size: 42px;
   opacity: 0.5;
 }
 .ply-empty-title {
-  font-size: 14px;
+  font-size: 18px;
   color: rgba(255,255,255,0.5);
+  font-weight: 600;
 }
 .ply-empty-sub {
-  font-size: 11px;
+  font-size: 14px;
   color: rgba(255,255,255,0.25);
+  line-height: 1.5;
 }
 .ply-upload-btn {
   margin-top: 8px;
-  padding: 6px 18px;
+  padding: 8px 20px;
   border-radius: 6px;
   border: 1px solid rgba(0, 212, 255, 0.5);
   background: rgba(0, 212, 255, 0.12);
   color: #00d4ff;
-  font-size: 13px;
+  font-size: 15px;
   cursor: pointer;
   pointer-events: all;
   transition: all 0.2s;
@@ -632,7 +637,7 @@ export default {
   to { transform: rotate(360deg); }
 }
 .ply-loading-text {
-  font-size: 13px;
+  font-size: 15px;
   color: rgba(0, 212, 255, 0.8);
 }
 
@@ -644,7 +649,7 @@ export default {
   background: rgba(5, 16, 40, 0.92);
   border: 1px solid rgba(0, 186, 255, 0.25);
   border-radius: 8px;
-  min-width: 180px;
+  min-width: 220px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   overflow: hidden;
   z-index: 10;
@@ -658,7 +663,7 @@ export default {
   border-bottom: 1px solid rgba(0, 186, 255, 0.15);
 }
 .ply-ctrl-title {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #00eaff;
   letter-spacing: 0.5px;
@@ -667,7 +672,7 @@ export default {
   background: none;
   border: none;
   color: rgba(0, 234, 255, 0.6);
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
   padding: 0;
 }
@@ -683,14 +688,14 @@ export default {
   gap: 6px;
 }
 .ply-ctrl-label {
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(255,255,255,0.6);
-  min-width: 42px;
+  min-width: 52px;
 }
 .ply-ctrl-val {
-  font-size: 11px;
+  font-size: 13px;
   color: #00d4ff;
-  min-width: 20px;
+  min-width: 24px;
   text-align: right;
 }
 .ply-range {
@@ -715,8 +720,8 @@ export default {
   border: 1px solid rgba(0, 186, 255, 0.3);
   border-radius: 4px;
   color: #fff;
-  font-size: 11px;
-  padding: 3px 6px;
+  font-size: 13px;
+  padding: 4px 8px;
   cursor: pointer;
   outline: none;
 }
@@ -727,7 +732,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(255,255,255,0.6);
   cursor: pointer;
   user-select: none;
@@ -741,12 +746,12 @@ export default {
   gap: 4px;
 }
 .ply-view-btn {
-  padding: 3px 7px;
+  padding: 4px 8px;
   border-radius: 4px;
   border: 1px solid rgba(0, 186, 255, 0.3);
   background: rgba(0, 60, 100, 0.5);
   color: rgba(255,255,255,0.7);
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -764,7 +769,7 @@ export default {
 }
 
 .ply-upload-link {
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(0, 212, 255, 0.7);
   cursor: pointer;
   padding: 3px 0;
@@ -783,8 +788,8 @@ export default {
   background: rgba(5, 16, 40, 0.85);
   border: 1px solid rgba(0, 186, 255, 0.2);
   border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 11px;
+  padding: 6px 12px;
+  font-size: 13px;
   color: rgba(0, 212, 255, 0.8);
   z-index: 10;
 }
