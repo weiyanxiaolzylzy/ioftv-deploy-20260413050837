@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const WebIFC = require('web-ifc');
 const http = require('http');
 
@@ -13,6 +14,11 @@ const PYTHON_API_PORT = 8765;
 
 app.use(cors());
 app.use(express.json());
+
+// Silence browser favicon requests when the backend is opened directly or used by embedded views.
+app.get('/favicon.ico', (req, res) => {
+    res.status(204).end();
+});
 
 // 单独代理 /pyapi/health 到 Python 根路径
 app.get('/pyapi/health', (req, res) => {
@@ -55,7 +61,9 @@ app.use('/pyapi', (req, res) => {
         res.status(502).json({ error: `Python API 不可用: ${e.message}` });
     });
     if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
-        proxyReq.write(JSON.stringify(req.body));
+        const bodyStr = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyStr));
+        proxyReq.write(bodyStr);
     }
     proxyReq.end();
 });
@@ -75,6 +83,7 @@ const IFC_UPLOAD_DIR = path.join(UPLOAD_DIR, 'ifc');
 const WASM_DIR = path.join(__dirname, '../public/static/js/wasm');
 const STEEL_QC_DIST_DIR = path.join(__dirname, '../dist-steel-qc');
 const IFC_DIST_DIR = path.join(__dirname, '../ifc/dist');
+const IFC_WASM_DIR = path.join(IFC_DIST_DIR, 'wasm');
 
 // node_modules/web-ifc/ 目录已包含 web-ifc-node.wasm，无需额外 SetWasmPath
 
@@ -240,8 +249,10 @@ if (fs.existsSync(STEEL_QC_DIST_DIR)) {
 }
 if (fs.existsSync(IFC_DIST_DIR)) {
   app.use('/ifc', express.static(IFC_DIST_DIR));
-  // 独立 IFC 查看器的 WASM 文件代理到正确路径
-  app.use('/ifc/wasm', express.static(WASM_DIR));
+  // 独立 IFC 查看器优先使用自己构建产物里的 wasm，避免与主工程 /wasm 的版本串用
+  if (fs.existsSync(IFC_WASM_DIR)) {
+    app.use('/ifc/wasm', express.static(IFC_WASM_DIR));
+  }
 }
 // 托管前端静态文件
 app.use(express.static(path.join(__dirname, '../dist')));
@@ -569,7 +580,7 @@ app.get('/api/qc-templates/:id/download', (req, res) => {
     }
 });
 
-app.post('/api/qc-templates/:id/export', requireRole(['admin']), (req, res) => {
+app.post('/api/qc-templates/:id/export', requireRole(['admin']), async (req, res) => {
     try {
         const fullPath = resolveQcTemplatePath(req.params.id);
         if (!fullPath) {
@@ -584,250 +595,194 @@ app.post('/api/qc-templates/:id/export', requireRole(['admin']), (req, res) => {
         const teamLeaderName = safeCellText(meta.teamLeaderName);
         const qualityInspectorName = safeCellText(meta.qualityInspectorName);
 
-        const wb = XLSX.readFile(fullPath, { cellText: false, cellDates: true });
-        const sheetName = wb.SheetNames[0];
-        const sheet = wb.Sheets[sheetName];
-        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, blankrows: false });
-        const normalized = normalizeAoa(aoa);
-        const headerRowIndex = findHeaderRowIndex(normalized);
-        if (headerRowIndex === -1) {
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.readFile(fullPath);
+        const ws = wb.worksheets[0];
+        if (!ws) return res.status(400).json({ success: false, message: 'No worksheet found' });
+
+        const getCellText = (row, col) => {
+            const cell = ws.getCell(row, col);
+            if (!cell || cell.value == null) return '';
+            if (typeof cell.value === 'object' && cell.value.richText) {
+                return cell.value.richText.map(r => r.text || '').join('').trim();
+            }
+            return String(cell.value).trim();
+        };
+
+        const rowCount = ws.rowCount;
+        const colCount = ws.columnCount;
+
+        const buildRowTexts = (rowNum) => {
+            const texts = [];
+            for (let c = 1; c <= colCount; c++) {
+                texts.push(getCellText(rowNum, c).replace(/\s+/g, ''));
+            }
+            return texts;
+        };
+
+        let headerRow = -1;
+        for (let r = 1; r <= Math.min(rowCount, 30); r++) {
+            const texts = buildRowTexts(r);
+            const joined = texts.join('');
+            if (joined.includes('序号') && joined.includes('项目') && joined.includes('允许偏差')) {
+                headerRow = r;
+                break;
+            }
+        }
+        if (headerRow === -1) {
             return res.status(400).json({ success: false, message: 'Template header not found' });
         }
 
-        const headerRow = normalized[headerRowIndex] || [];
-        const subHeaderRow = normalized[headerRowIndex + 1] || [];
+        const headerTexts = buildRowTexts(headerRow);
+        const subHeaderTexts = buildRowTexts(headerRow + 1);
 
-        const seqCol = findCol(headerRow, (t) => t.includes('序号'));
-        const itemCol = findCol(headerRow, (t) => t.includes('项目'));
-        const designCol = findCol(headerRow, (t) => t.includes('设计') && t.includes('尺寸'));
-        const remarkCol = findCol(headerRow, (t) => t.includes('备注'));
-        const selfCheckCol = findCol(subHeaderRow, (t) => t.includes('自检'));
-        const groupCheckCol = findCol(subHeaderRow, (t) => t.includes('班组') || t.includes('班组长'));
+        const findColIdx = (texts, pred) => {
+            for (let i = 0; i < texts.length; i++) {
+                if (pred(texts[i])) return i + 1;
+            }
+            return -1;
+        };
+
+        const seqCol = findColIdx(headerTexts, t => t.includes('序号'));
+        const designCol = findColIdx(headerTexts, t => t.includes('设计') && t.includes('尺寸'));
+        const remarkCol = findColIdx(headerTexts, t => t.includes('备注'));
+        const selfCheckCol = findColIdx(subHeaderTexts, t => t.includes('自检'));
+        const groupCheckCol = findColIdx(subHeaderTexts, t => t.includes('班组') || t.includes('班组长'));
 
         const bySeq = new Map();
-        rows.forEach((r) => {
+        rows.forEach(r => {
             const seq = Number(r && r.seq);
             if (!Number.isNaN(seq) && seq > 0) bySeq.set(seq, r);
         });
 
-        const isNumericSeq = (v) => /^[0-9]+$/.test(safeCellText(v));
+        const setVal = (row, col, val) => {
+            if (col < 1 || row < 1) return;
+            const cell = ws.getCell(row, col);
+            cell.value = val == null ? '' : val;
+        };
 
-        for (let i = headerRowIndex + 1; i < normalized.length; i++) {
-            const row = normalized[i] || [];
-            const seqText = safeCellText(row[seqCol >= 0 ? seqCol : 0]);
-            if (!isNumericSeq(seqText)) continue;
+        for (let r = headerRow + 2; r <= rowCount; r++) {
+            const seqText = getCellText(r, seqCol > 0 ? seqCol : 1);
+            if (!/^[0-9]+$/.test(seqText)) continue;
             const seq = Number(seqText);
             const payload = bySeq.get(seq);
             if (!payload) continue;
-
-            const setCell = (r, c, v) => {
-                if (c < 0 || r < 0) return;
-                const addr = XLSX.utils.encode_cell({ r, c });
-                if (!sheet[addr]) sheet[addr] = { t: 's', v: '' };
-                sheet[addr].v = v == null ? '' : v;
-                sheet[addr].t = typeof sheet[addr].v === 'number' ? 'n' : 's';
-            };
 
             const designValue = payload.designValue == null || payload.designValue === '' ? '' : Number(payload.designValue);
             const measuredValue = payload.measuredValue == null || payload.measuredValue === '' ? '' : Number(payload.measuredValue);
             const deviation = payload.deviation == null || payload.deviation === '' ? '' : Number(payload.deviation);
             const verdict = safeCellText(payload.verdict);
 
-            if (designCol >= 0 && designValue !== '' && !Number.isNaN(designValue)) setCell(i, designCol, designValue);
-
-            const measuredCol = selfCheckCol >= 0 ? selfCheckCol : -1;
-            if (measuredCol >= 0 && measuredValue !== '' && !Number.isNaN(measuredValue)) setCell(i, measuredCol, measuredValue);
-            if (groupCheckCol >= 0 && safeCellText(payload.groupMeasuredValue) !== '') {
-                const groupMeasured = Number(payload.groupMeasuredValue);
-                if (!Number.isNaN(groupMeasured)) setCell(i, groupCheckCol, groupMeasured);
+            if (designCol > 0 && designValue !== '' && !Number.isNaN(designValue)) setVal(r, designCol, designValue);
+            if (selfCheckCol > 0 && measuredValue !== '' && !Number.isNaN(measuredValue)) setVal(r, selfCheckCol, measuredValue);
+            if (groupCheckCol > 0 && safeCellText(payload.groupMeasuredValue) !== '') {
+                const gv = Number(payload.groupMeasuredValue);
+                if (!Number.isNaN(gv)) setVal(r, groupCheckCol, gv);
             }
-
-            if (remarkCol >= 0) {
+            if (remarkCol > 0) {
                 const parts = [];
                 if (deviation !== '' && !Number.isNaN(deviation)) parts.push(`偏差:${deviation > 0 ? '+' : ''}${deviation}`);
                 if (verdict) parts.push(`判定:${verdict}`);
                 if (componentNo) parts.push(`构件:${componentNo}`);
-                if (parts.length) setCell(i, remarkCol, parts.join('  '));
+                if (parts.length) setVal(r, remarkCol, parts.join('  '));
             }
         }
 
-        const merges = Array.isArray(sheet['!merges']) ? sheet['!merges'] : [];
-
-        const isTopLeftMergedCell = (r, c) =>
-            merges.some((m) => m && m.s && m.e && m.s.r === r && m.s.c === c && (m.e.c > c || m.e.r > r));
-
-        const setCellRaw = (r, c, v) => {
-            if (c < 0 || r < 0) return;
-            const addr = XLSX.utils.encode_cell({ r, c });
-            if (!sheet[addr]) sheet[addr] = { t: 's', v: '' };
-            sheet[addr].v = v == null ? '' : v;
-            sheet[addr].t = typeof sheet[addr].v === 'number' ? 'n' : 's';
-        };
-
         const applyNameToText = (text, label, name) => {
             if (!name) return text;
-            const normalized = String(text);
-            const directCn = `${label}：${name}`;
-            const directEn = `${label}:${name}`;
-            if (normalized.includes(directCn) || normalized.includes(directEn)) return normalized;
-
+            const s = String(text);
+            if (s.includes(`${label}：${name}`) || s.includes(`${label}:${name}`)) return s;
             const re = new RegExp(`${label}\\s*([：:])\\s*`, 'g');
-            return normalized.replace(re, (m, colon) => `${label}${colon}${name} `);
+            return s.replace(re, (m, colon) => `${label}${colon}${name} `);
         };
 
-        const applyMeta = (addr, text) => {
-            let out = text;
-            out = applyNameToText(out, '自检员', selfInspectorName);
-            out = applyNameToText(out, '班组长', teamLeaderName);
-            out = applyNameToText(out, '质检员', qualityInspectorName);
-            out = applyNameToText(out, '质量检查员', qualityInspectorName);
-            out = applyNameToText(out, '质量检测员', qualityInspectorName);
-            return out;
+        const pickYearTail = (text) => {
+            const s = String(text);
+            const idx = s.indexOf('年');
+            return idx === -1 ? '' : s.slice(idx).trim();
         };
 
-        if (groupName || selfInspectorName || teamLeaderName || qualityInspectorName) {
-            Object.keys(sheet)
-                .filter((k) => !k.startsWith('!'))
-                .forEach((addr) => {
-                    const cell = sheet[addr];
-                    if (!cell || typeof cell.v !== 'string' || !cell.v.trim()) return;
-                    const next = applyMeta(addr, cell.v);
-                    if (next !== cell.v) {
-                        cell.v = next;
-                        cell.t = 's';
-                        return;
-                    }
-
-                    const v = cell.v.trim();
-                    const labels = [
-                        { label: '自检员', name: selfInspectorName },
-                        { label: '班组长', name: teamLeaderName },
-                        { label: '质检员', name: qualityInspectorName },
-                        { label: '质量检查员', name: qualityInspectorName },
-                        { label: '质量检测员', name: qualityInspectorName }
-                    ];
-                    const match = labels.find((x) => x.name && v === x.label);
-                    if (!match) return;
-
-                    const pos = XLSX.utils.decode_cell(addr);
-                    if (isTopLeftMergedCell(pos.r, pos.c)) {
-                        setCellRaw(pos.r, pos.c, `${match.label}：${match.name}`);
-                        return;
-                    }
-
-                    const rightAddr = XLSX.utils.encode_cell({ r: pos.r, c: pos.c + 1 });
-                    const rightCell = sheet[rightAddr];
-                    const rightEmpty = !rightCell || rightCell.v == null || String(rightCell.v).trim() === '';
-                    if (rightEmpty) {
-                        setCellRaw(pos.r, pos.c + 1, match.name);
-                    } else {
-                        setCellRaw(pos.r, pos.c, `${match.label}：${match.name}`);
-                    }
-                });
-        }
-
-        if (groupName) {
-            const groupLabels = ['加工班组', '施工班组', '班组'];
-            Object.keys(sheet)
-                .filter((k) => !k.startsWith('!'))
-                .forEach((addr) => {
-                    const cell = sheet[addr];
-                    if (!cell || typeof cell.v !== 'string') return;
-                    const normalized = String(cell.v).replace(/\s+/g, '');
-                    const label = groupLabels.find((l) => normalized === l);
-                    if (!label) return;
-
-                    const pos = XLSX.utils.decode_cell(addr);
-                    if (isTopLeftMergedCell(pos.r, pos.c)) {
-                        setCellRaw(pos.r, pos.c, `${label}：${groupName}`);
-                        return;
-                    }
-
-                    const rightAddr = XLSX.utils.encode_cell({ r: pos.r, c: pos.c + 1 });
-                    const rightCell = sheet[rightAddr];
-                    const rightEmpty = !rightCell || rightCell.v == null || String(rightCell.v).trim() === '';
-                    if (rightEmpty) {
-                        setCellRaw(pos.r, pos.c + 1, groupName);
-                    } else {
-                        setCellRaw(pos.r, pos.c, `${label}：${groupName}`);
-                    }
-                });
-        }
-
-        const forceWriteSignatures = () => {
-            const keys = Object.keys(sheet).filter((k) => !k.startsWith('!'));
-
-            const pickYearTail = (text) => {
-                const s = String(text);
-                const idx = s.indexOf('年');
-                if (idx === -1) return '';
-                return s.slice(idx).trim() || '';
-            };
-
-            const normalize = (text) => String(text).replace(/\s+/g, '');
-
-            keys.forEach((addr) => {
-                const cell = sheet[addr];
-                if (!cell || typeof cell.v !== 'string') return;
-                const rawText = cell.v;
-                const compact = normalize(rawText);
+        ws.eachRow((row, rowNum) => {
+            row.eachCell((cell, colNum) => {
+                let val = cell.value;
+                if (val && typeof val === 'object' && val.richText) {
+                    val = val.richText.map(r => r.text || '').join('');
+                }
+                if (typeof val !== 'string' || !val.trim()) return;
+                let text = val;
+                const compact = text.replace(/\s+/g, '');
 
                 if (selfInspectorName && teamLeaderName) {
-                    const hasSelf = compact.includes('自检员') && compact.includes('自检员：');
-                    const hasLeader = compact.includes('班组长') && compact.includes('班组长：');
-                    if (hasSelf && hasLeader) {
-                        const tail = pickYearTail(rawText);
+                    if (compact.includes('自检员：') && compact.includes('班组长：')) {
+                        const tail = pickYearTail(text);
                         const suffix = tail ? `  ${tail}` : '  年    月    日';
-                        const out = `自检员：${selfInspectorName}    班组长：${teamLeaderName}${suffix}`;
-                        sheet[addr].v = out;
-                        sheet[addr].t = 's';
+                        cell.value = `自检员：${selfInspectorName}    班组长：${teamLeaderName}${suffix}`;
                         return;
                     }
                 }
 
                 if (qualityInspectorName) {
-                    const hasQa =
-                        compact.includes('质量检查员') ||
-                        compact.includes('质量检测员') ||
-                        (compact.includes('质检员') && !compact.includes('质检员：'));
-
-                    if (hasQa && (compact.includes('质量检查员') || compact.includes('质量检测员') || compact.includes('质检员'))) {
-                        const label = compact.includes('质量检查员')
-                            ? '质量检查员'
-                            : compact.includes('质量检测员')
-                              ? '质量检测员'
-                              : '质检员';
-                        const tail = pickYearTail(rawText);
+                    const labels = ['质量检查员', '质量检测员', '质检员'];
+                    const found = labels.find(l => compact.includes(l));
+                    if (found && !compact.includes(`${found}：${qualityInspectorName}`)) {
+                        const tail = pickYearTail(text);
                         const suffix = tail ? `  ${tail}` : '  年    月    日';
-                        const out = `${label}：${qualityInspectorName}${suffix}`;
-                        sheet[addr].v = out;
-                        sheet[addr].t = 's';
+                        cell.value = `${found}：${qualityInspectorName}${suffix}`;
                         return;
                     }
                 }
 
+                let updated = text;
+                updated = applyNameToText(updated, '自检员', selfInspectorName);
+                updated = applyNameToText(updated, '班组长', teamLeaderName);
+                updated = applyNameToText(updated, '质检员', qualityInspectorName);
+                updated = applyNameToText(updated, '质量检查员', qualityInspectorName);
+                updated = applyNameToText(updated, '质量检测员', qualityInspectorName);
+                if (updated !== text) { cell.value = updated; return; }
+
+                const trimmed = text.trim();
+                const nameLabels = [
+                    { label: '自检员', name: selfInspectorName },
+                    { label: '班组长', name: teamLeaderName },
+                    { label: '质检员', name: qualityInspectorName },
+                    { label: '质量检查员', name: qualityInspectorName },
+                    { label: '质量检测员', name: qualityInspectorName }
+                ];
+                const match = nameLabels.find(x => x.name && trimmed === x.label);
+                if (match) {
+                    const rightCell = ws.getCell(rowNum, colNum + 1);
+                    const rightEmpty = !rightCell.value || String(rightCell.value).trim() === '';
+                    if (rightEmpty) {
+                        rightCell.value = match.name;
+                    } else {
+                        cell.value = `${match.label}：${match.name}`;
+                    }
+                    return;
+                }
+
                 if (groupName) {
-                    const groupField =
-                        compact.includes('加工班组') ||
-                        compact.includes('施工班组') ||
-                        (compact.includes('班组') && !compact.includes('班组长'));
-                    if (groupField && (compact.includes('加工班组') || compact.includes('施工班组'))) {
-                        const label = compact.includes('加工班组') ? '加工班组' : '施工班组';
-                        sheet[addr].v = `${label}：${groupName}`;
-                        sheet[addr].t = 's';
+                    const groupLabels = ['加工班组', '施工班组', '班组'];
+                    const gMatch = groupLabels.find(l => compact === l || compact.includes(l));
+                    if (gMatch && !compact.includes('班组长')) {
+                        const rightCell = ws.getCell(rowNum, colNum + 1);
+                        const rightEmpty = !rightCell.value || String(rightCell.value).trim() === '';
+                        if (rightEmpty) {
+                            rightCell.value = groupName;
+                        } else {
+                            cell.value = `${gMatch}：${groupName}`;
+                        }
                     }
                 }
             });
-        };
+        });
 
-        forceWriteSignatures();
-
-        const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+        const buffer = await wb.xlsx.writeBuffer();
         const baseName = componentNo ? `${componentNo}_${path.basename(fullPath)}` : path.basename(fullPath);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(baseName)}`);
-        return res.send(buffer);
+        return res.send(Buffer.from(buffer));
     } catch (e) {
+        console.error('POST /api/qc-templates/:id/export error:', e);
         return res.status(500).json({ success: false, message: e.message });
     }
 });
@@ -1146,7 +1101,8 @@ app.get('/api/today-plan', (req, res) => {
                 project: project.name,
                 projectId: project.id,
                 componentId: c.id,
-                componentName: c.name,
+                componentName: c.componentMark || c.name,
+                componentMark: c.componentMark || '',
                 spec: c.spec,
                 team: c.teamLeader,
                 teamName: c.teamName || '',
@@ -1192,7 +1148,7 @@ app.get('/api/inspection-history', (req, res) => {
                 rows.push({
                     projectName: project.name || '—',
                     componentType: c.ifcType || c.type || '—',
-                    componentNumber: c.name || c.id || '—',
+                    componentNumber: c.componentMark || c.name || c.id || '—',
                     inspectionDate: pd || today,
                 });
             }
@@ -1258,15 +1214,48 @@ app.delete('/api/groups/:id', requireRole(['admin', 'operator']), (req, res) => 
     try {
         const dataContent = fs.readFileSync(DATA_FILE, 'utf-8');
         const data = dataContent ? JSON.parse(dataContent) : {};
-        
+
         if (data.groups) {
             data.groups = data.groups.filter(g => g.id !== req.params.id);
             fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
         }
-        
+
         res.json({ success: true, data: data.groups || [] });
     } catch (error) {
         console.error('Error in DELETE /api/groups:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 更新班组
+app.put('/api/groups/:id', requireRole(['admin', 'operator']), uploadMiddleware, (req, res) => {
+    try {
+        const dataContent = fs.readFileSync(DATA_FILE, 'utf-8');
+        const data = dataContent ? JSON.parse(dataContent) : {};
+
+        if (!data.groups) {
+            data.groups = [];
+        }
+
+        const groupIndex = data.groups.findIndex(g => g.id === req.params.id);
+        if (groupIndex === -1) {
+            return res.status(404).json({ success: false, message: '班组不存在' });
+        }
+
+        // 更新班组信息
+        if (req.body.name) {
+            data.groups[groupIndex].name = req.body.name;
+        }
+        if (req.file) {
+            data.groups[groupIndex].photoUrl = `/uploads/${req.file.filename}`;
+        } else if (req.body.photoUrl) {
+            data.groups[groupIndex].photoUrl = req.body.photoUrl;
+        }
+
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+        res.json({ success: true, data: data.groups[groupIndex] });
+    } catch (error) {
+        console.error('Error in PUT /api/groups:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -1353,6 +1342,7 @@ app.post('/api/projects/:id/components/import-ifc', requireRole(['admin', 'opera
                 project.components.push({
                     id: genCompId(),
                     name: el.name || `构件-${el.expressID}`,
+                    componentMark: el.componentMark || '',
                     spec: '',
                     teamId: '',
                     teamName: '',
