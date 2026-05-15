@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+ import * as THREE from 'three';
 import { IfcViewerAPI } from 'web-ifc-viewer';
 import * as WebIFC from 'web-ifc';
 
@@ -164,11 +164,11 @@ const wsText = document.getElementById('ws-text');
 let currentModel = null;
 let currentUrl = null;
 let currentModelID = null;
-let currentProjectID = '';
 let elementIndex = [];
 let selectedExpressID = null;
 let componentMarkLoadPromise = null;
 let componentMarkLookup = new Map();
+let assemblySummaryLoadPromise = null;
 let assemblySummaryLookup = new Map();
 let currentHighlightReason = null; // 检测原因
 let multiSelectMode = false; // 多选模式开关（3D 点击多选，由父页开启）
@@ -182,59 +182,6 @@ let pendingSelectFromParent = null;
 let isolateComponentView = false;
 /** 当前是否已隐藏整模（用于 clearSelection / 加载新模时恢复） */
 let isolateHideBaseModel = false;
-
-async function preloadComponentMarksFromServer() {
-    if (!currentProjectID) return { loaded: 0, total: 0 };
-    try {
-        const response = await fetch(`/api/projects/${encodeURIComponent(String(currentProjectID))}/components/marks`);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        const payload = await response.json().catch(() => ({}));
-        const rows = payload && payload.success && Array.isArray(payload.data) ? payload.data : [];
-        if (!rows.length || !elementIndex.length) {
-            return { loaded: 0, total: rows.length };
-        }
-
-        const byExpressId = new Map(rows.map((row) => [String(row.expressID || ''), row]));
-        let loaded = 0;
-
-        for (const element of elementIndex) {
-            const serverRow = byExpressId.get(String(element.expressID));
-            if (!serverRow) continue;
-
-            const componentMark = serverRow.componentMark ? String(serverRow.componentMark).trim() : '';
-            if (componentMark) {
-                element.componentMark = componentMark;
-                componentMarkLookup.set(String(element.expressID), componentMark);
-                loaded++;
-            }
-
-            if (serverRow.material) element.material = String(serverRow.material);
-            if (serverRow.spec) element.spec = String(serverRow.spec);
-            if (serverRow.mainReference) element.mainReference = String(serverRow.mainReference);
-            if (serverRow.positionCode) element.positionCode = String(serverRow.positionCode);
-            if (serverRow.bottomElevation) element.bottomElevation = String(serverRow.bottomElevation);
-            if (serverRow.topElevation) element.topElevation = String(serverRow.topElevation);
-            if (serverRow.length != null) element.length = Number(serverRow.length);
-            if (serverRow.width != null) element.width = Number(serverRow.width);
-            if (serverRow.area != null) element.area = Number(serverRow.area);
-            if (serverRow.castUnitWeight != null) element.castUnitWeight = Number(serverRow.castUnitWeight);
-            if (serverRow.weightNet != null) element.weightNet = Number(serverRow.weightNet);
-            if (serverRow.weightGross != null) element.weightGross = Number(serverRow.weightGross);
-        }
-
-        if (loaded > 0) {
-            console.log('[ComponentMark] 数据库回填成功:', loaded, '/', rows.length);
-            renderElementsList();
-        }
-
-        return { loaded, total: rows.length };
-    } catch (error) {
-        console.warn('[ComponentMark] 数据库回填失败:', error && error.message ? error.message : error);
-        return { loaded: 0, total: 0 };
-    }
-}
 
 // ============================================================
 // 5. WebSocket 客户端
@@ -1110,7 +1057,7 @@ container.addEventListener('mouseup', async (e) => {
 });
 
 // ============================================================
-// 10. 构件列表相关函数 (优化版 - 快速类型过滤)
+// 10. 构件列表相关函f (优化版 - 快速类型过滤)
 // ============================================================
 
 // 定义哪些 IFC 类型是有几何的可见构件
@@ -1238,12 +1185,8 @@ async function buildElementIndex() {
             componentMarkLookup.set(String(row.expressID), String(row.componentMark).trim());
         }
     }
-    const preloadRes = await preloadComponentMarksFromServer();
-    if (preloadRes.loaded > 0) {
-        componentMarkLoadPromise = Promise.resolve();
-    } else {
-        componentMarkLoadPromise = lazyLoadComponentMarks(modelID);
-    }
+    componentMarkLoadPromise = lazyLoadComponentMarks(modelID);
+    assemblySummaryLoadPromise = lazyLoadAssemblySummaries(modelID);
 }
 
 async function lazyLoadComponentMarks(modelID) {
@@ -1415,20 +1358,39 @@ async function lazyLoadComponentMarks(modelID) {
     }
 }
 
-async function extractAssemblySummaryForExpressID(modelID, expressID) {
+async function lazyLoadAssemblySummaries(modelID) {
     const ifcAPI = viewer.IFC?.loader?.ifcManager?.ifcAPI;
-    if (!ifcAPI || expressID == null) return null;
+    if (!ifcAPI || !elementIndex.length) return;
 
     try {
-        const numericExpressID = Number(expressID);
-        if (!Number.isFinite(numericExpressID)) return null;
-
         const relAggLines = ifcAPI.GetLineIDsWithType(modelID, WebIFC.IFCRELAGGREGATES);
+        const relMatLines = ifcAPI.GetLineIDsWithType(modelID, WebIFC.IFCRELASSOCIATESMATERIAL);
+        const relDefTypeLines = ifcAPI.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYTYPE);
+        const relDefLines = ifcAPI.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
+
+        const relAggIds = [];
+        const relMatIds = [];
+        const relDefTypeIds = [];
+        const relDefIds = [];
+
+        const pushIds = (src, target) => {
+            if (!src) return;
+            const size = typeof src.size === 'function' ? src.size() : (src.length || 0);
+            for (let i = 0; i < size; i++) {
+                const id = typeof src.get === 'function' ? src.get(i) : src[i];
+                if (typeof id === 'number') target.push(id);
+            }
+        };
+
+        pushIds(relAggLines, relAggIds);
+        pushIds(relMatLines, relMatIds);
+        pushIds(relDefTypeLines, relDefTypeIds);
+        pushIds(relDefLines, relDefIds);
+
         const relDefinesMap = new Map();
         const relDefinesByTypeMap = new Map();
+        const assemblyChildren = new Map();
         const materialMap = new Map();
-        let assemblyId = null;
-        let childIds = [];
 
         const readPropValue = async (prop) => {
             if (!prop) return '';
@@ -1440,48 +1402,7 @@ async function extractAssemblySummaryForExpressID(modelID, expressID) {
             return '';
         };
 
-        const relAggSize = relAggLines ? (typeof relAggLines.size === 'function' ? relAggLines.size() : (relAggLines.length || 0)) : 0;
-        for (let i = 0; i < relAggSize; i++) {
-            const relId = typeof relAggLines.get === 'function' ? relAggLines.get(i) : relAggLines[i];
-            if (typeof relId !== 'number') continue;
-            try {
-                const rel = await ifcAPI.GetLine(modelID, relId, false);
-                if (!rel || !rel.RelatingObject || !Array.isArray(rel.RelatedObjects)) continue;
-                const parentId = rel.RelatingObject?.value ?? rel.RelatingObject;
-                if (typeof parentId !== 'number') continue;
-                const parentLine = await ifcAPI.GetLine(modelID, parentId, false);
-                if (!parentLine || parentLine.type !== WebIFC.IFCELEMENTASSEMBLY) continue;
-                const relatedIds = rel.RelatedObjects.map((item) => item?.value ?? item).filter((id) => typeof id === 'number');
-                if (parentId === numericExpressID) {
-                    assemblyId = parentId;
-                    childIds = relatedIds;
-                    break;
-                }
-                if (relatedIds.includes(numericExpressID)) {
-                    assemblyId = parentId;
-                    childIds = relatedIds;
-                    break;
-                }
-            } catch {}
-        }
-
-        if (!assemblyId) {
-            const ownLine = await ifcAPI.GetLine(modelID, numericExpressID, false);
-            if (ownLine && ownLine.type === WebIFC.IFCELEMENTASSEMBLY) {
-                assemblyId = numericExpressID;
-                childIds = [];
-            } else {
-                return null;
-            }
-        }
-
-        const relevantIds = new Set([assemblyId, ...childIds]);
-
-        const relDefLines = ifcAPI.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
-        const relDefSize = relDefLines ? (typeof relDefLines.size === 'function' ? relDefLines.size() : (relDefLines.length || 0)) : 0;
-        for (let i = 0; i < relDefSize; i++) {
-            const relId = typeof relDefLines.get === 'function' ? relDefLines.get(i) : relDefLines[i];
-            if (typeof relId !== 'number') continue;
+        for (const relId of relDefIds) {
             try {
                 const rel = await ifcAPI.GetLine(modelID, relId, true);
                 if (!rel || !rel.RelatingPropertyDefinition) continue;
@@ -1507,18 +1428,14 @@ async function extractAssemblySummaryForExpressID(modelID, expressID) {
                 if (!propList.length || !Array.isArray(rel.RelatedObjects)) continue;
                 for (const obj of rel.RelatedObjects) {
                     const objId = obj?.value ?? obj?.expressID ?? obj;
-                    if (typeof objId !== 'number' || !relevantIds.has(objId)) continue;
+                    if (typeof objId !== 'number') continue;
                     if (!relDefinesMap.has(objId)) relDefinesMap.set(objId, []);
                     relDefinesMap.get(objId).push(...propList);
                 }
             } catch {}
         }
 
-        const relDefTypeLines = ifcAPI.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYTYPE);
-        const relDefTypeSize = relDefTypeLines ? (typeof relDefTypeLines.size === 'function' ? relDefTypeLines.size() : (relDefTypeLines.length || 0)) : 0;
-        for (let i = 0; i < relDefTypeSize; i++) {
-            const relId = typeof relDefTypeLines.get === 'function' ? relDefTypeLines.get(i) : relDefTypeLines[i];
-            if (typeof relId !== 'number') continue;
+        for (const relId of relDefTypeIds) {
             try {
                 const rel = await ifcAPI.GetLine(modelID, relId, true);
                 if (!rel || !Array.isArray(rel.RelatedObjects) || !rel.RelatingType) continue;
@@ -1527,18 +1444,27 @@ async function extractAssemblySummaryForExpressID(modelID, expressID) {
                 };
                 for (const obj of rel.RelatedObjects) {
                     const objId = obj?.value ?? obj?.expressID ?? obj;
-                    if (typeof objId === 'number' && relevantIds.has(objId) && !relDefinesByTypeMap.has(objId)) {
+                    if (typeof objId === 'number' && !relDefinesByTypeMap.has(objId)) {
                         relDefinesByTypeMap.set(objId, typeInfo);
                     }
                 }
             } catch {}
         }
 
-        const relMatLines = ifcAPI.GetLineIDsWithType(modelID, WebIFC.IFCRELASSOCIATESMATERIAL);
-        const relMatSize = relMatLines ? (typeof relMatLines.size === 'function' ? relMatLines.size() : (relMatLines.length || 0)) : 0;
-        for (let i = 0; i < relMatSize; i++) {
-            const relId = typeof relMatLines.get === 'function' ? relMatLines.get(i) : relMatLines[i];
-            if (typeof relId !== 'number') continue;
+        for (const relId of relAggIds) {
+            try {
+                const rel = await ifcAPI.GetLine(modelID, relId, false);
+                if (!rel || !rel.RelatingObject || !Array.isArray(rel.RelatedObjects)) continue;
+                const parentId = rel.RelatingObject?.value ?? rel.RelatingObject;
+                if (typeof parentId !== 'number') continue;
+                const parentLine = await ifcAPI.GetLine(modelID, parentId, false);
+                if (!parentLine || parentLine.type !== WebIFC.IFCELEMENTASSEMBLY) continue;
+                const childIds = rel.RelatedObjects.map((item) => item?.value ?? item).filter((id) => typeof id === 'number');
+                if (childIds.length) assemblyChildren.set(parentId, childIds);
+            } catch {}
+        }
+
+        for (const relId of relMatIds) {
             try {
                 const rel = await ifcAPI.GetLine(modelID, relId, true);
                 if (!rel || !Array.isArray(rel.RelatedObjects)) continue;
@@ -1548,9 +1474,7 @@ async function extractAssemblySummaryForExpressID(modelID, expressID) {
                 if (!materialName) continue;
                 for (const obj of rel.RelatedObjects) {
                     const objId = obj?.value ?? obj?.expressID ?? obj;
-                    if (typeof objId === 'number' && relevantIds.has(objId) && !materialMap.has(objId)) {
-                        materialMap.set(objId, materialName);
-                    }
+                    if (typeof objId === 'number' && !materialMap.has(objId)) materialMap.set(objId, materialName);
                 }
             } catch {}
         }
@@ -1564,44 +1488,46 @@ async function extractAssemblySummaryForExpressID(modelID, expressID) {
             return '';
         };
 
-        const assemblyLine = await ifcAPI.GetLine(modelID, assemblyId, false);
-        const componentMark = unwrapIfcString(assemblyLine && assemblyLine.Tag) || getProp(assemblyId, 'Assembly/Cast unit Mark', 'Assembly/Cast unit mark');
-        if (!componentMark) return null;
-
-        const childLines = [];
-        for (const childId of childIds) {
+        for (const [assemblyId, childIds] of assemblyChildren.entries()) {
             try {
-                const line = await ifcAPI.GetLine(modelID, childId, false);
-                if (line) childLines.push({ id: childId, line });
+                const assemblyLine = await ifcAPI.GetLine(modelID, assemblyId, false);
+                const componentMark = unwrapIfcString(assemblyLine && assemblyLine.Tag) || getProp(assemblyId, 'Assembly/Cast unit Mark', 'Assembly/Cast unit mark');
+                if (!componentMark) continue;
+
+                const childLines = [];
+                for (const childId of childIds) {
+                    try {
+                        const line = await ifcAPI.GetLine(modelID, childId, false);
+                        if (line) childLines.push({ id: childId, line });
+                    } catch {}
+                }
+
+                const mainChild = childLines.find((item) => item.line.type === WebIFC.IFCBEAM)
+                    || childLines.find((item) => item.line.type === WebIFC.IFCMEMBER)
+                    || childLines[0]
+                    || null;
+
+                const summary = {
+                    componentMark,
+                    positionCode: getProp(assemblyId, 'Assembly/Cast unit position code'),
+                    bottomElevation: (getProp(assemblyId, 'Assembly/Cast unit bottom elevation') || '').replace(/\s+/g, ''),
+                    topElevation: (getProp(assemblyId, 'Assembly/Cast unit top elevation') || '').replace(/\s+/g, ''),
+                    length: unwrapIfcNumber(getProp(assemblyId, 'LENGTH_GROSS', 'LENGTH')),
+                    width: unwrapIfcNumber(getProp(assemblyId, 'Width')) ?? (mainChild ? unwrapIfcNumber(getProp(mainChild.id, 'Width')) : null),
+                    area: unwrapIfcNumber(getProp(assemblyId, 'AREA')) ?? (mainChild ? unwrapIfcNumber(getProp(mainChild.id, 'OuterSurfaceArea', 'NetArea')) : null),
+                    castUnitWeight: unwrapIfcNumber(getProp(assemblyId, 'Assembly/Cast unit weight', 'WEIGHT')),
+                    weightNet: unwrapIfcNumber(getProp(assemblyId, 'WEIGHT_NET')) ?? (mainChild ? unwrapIfcNumber(getProp(mainChild.id, 'NetWeight')) : null),
+                    weightGross: unwrapIfcNumber(getProp(assemblyId, 'WEIGHT_GROSS')),
+                    material: materialMap.get(assemblyId) || (mainChild ? materialMap.get(mainChild.id) : '') || '',
+                    mainSpec: (mainChild && (unwrapIfcString(mainChild.line.ObjectType) || unwrapIfcString(mainChild.line.Name))) || (mainChild && relDefinesByTypeMap.get(mainChild.id)?.name) || '',
+                    mainReference: (mainChild && (unwrapIfcString(mainChild.line.Tag) || getProp(mainChild.id, 'Reference'))) || ''
+                };
+
+                setAssemblySummaryForIds(componentMark, summary, [assemblyId, ...childIds]);
             } catch {}
         }
-
-        const mainChild = childLines.find((item) => item.line.type === WebIFC.IFCBEAM)
-            || childLines.find((item) => item.line.type === WebIFC.IFCMEMBER)
-            || childLines[0]
-            || null;
-
-        const summary = {
-            componentMark,
-            positionCode: getProp(assemblyId, 'Assembly/Cast unit position code'),
-            bottomElevation: (getProp(assemblyId, 'Assembly/Cast unit bottom elevation') || '').replace(/\s+/g, ''),
-            topElevation: (getProp(assemblyId, 'Assembly/Cast unit top elevation') || '').replace(/\s+/g, ''),
-            length: unwrapIfcNumber(getProp(assemblyId, 'LENGTH_GROSS', 'LENGTH')),
-            width: unwrapIfcNumber(getProp(assemblyId, 'Width')) ?? (mainChild ? unwrapIfcNumber(getProp(mainChild.id, 'Width')) : null),
-            area: unwrapIfcNumber(getProp(assemblyId, 'AREA')) ?? (mainChild ? unwrapIfcNumber(getProp(mainChild.id, 'OuterSurfaceArea', 'NetArea')) : null),
-            castUnitWeight: unwrapIfcNumber(getProp(assemblyId, 'Assembly/Cast unit weight', 'WEIGHT')),
-            weightNet: unwrapIfcNumber(getProp(assemblyId, 'WEIGHT_NET')) ?? (mainChild ? unwrapIfcNumber(getProp(mainChild.id, 'NetWeight')) : null),
-            weightGross: unwrapIfcNumber(getProp(assemblyId, 'WEIGHT_GROSS')),
-            material: materialMap.get(assemblyId) || (mainChild ? materialMap.get(mainChild.id) : '') || '',
-            mainSpec: (mainChild && (unwrapIfcString(mainChild.line.ObjectType) || unwrapIfcString(mainChild.line.Name))) || (mainChild && relDefinesByTypeMap.get(mainChild.id)?.name) || '',
-            mainReference: (mainChild && (unwrapIfcString(mainChild.line.Tag) || getProp(mainChild.id, 'Reference'))) || ''
-        };
-
-        setAssemblySummaryForIds(componentMark, summary, [assemblyId, ...childIds]);
-        return summary;
     } catch (e) {
         console.warn('[AssemblySummary] 提取失败:', e);
-        return null;
     }
 }
 
@@ -1640,9 +1566,15 @@ async function ensureAssemblySummaryForExpressID(expressID) {
     const cached = assemblySummaryLookup.get(key);
     if (cached) return cached;
 
-    if (currentModelID == null) return null;
-    const summary = await extractAssemblySummaryForExpressID(currentModelID, expressID);
-    return summary || assemblySummaryLookup.get(key) || null;
+    if (assemblySummaryLoadPromise) {
+        try {
+            await assemblySummaryLoadPromise;
+        } catch (e) {
+            console.warn('[AssemblySummary] 等待摘要加载失败:', e);
+        }
+    }
+
+    return assemblySummaryLookup.get(key) || null;
 }
 
 function getElementLabel(row) {
@@ -1805,13 +1737,15 @@ async function selectAndShowElement(modelID, expressID, focusSelection, opts = {
         const row = elementIndex.find((r) => r.expressID === expressID);
         if (row) {
             const componentMark = await ensureComponentMarkForExpressID(expressID);
+            const assemblySummary = await ensureAssemblySummaryForExpressID(expressID);
             postToParent({
                 type: 'element-selected',
                 expressID: row.expressID,
                 globalId: row.globalId || '',
                 name: row.name || '',
                 type: row.type || '',
-                componentMark: componentMark || row.componentMark || ''
+                componentMark: componentMark || row.componentMark || '',
+                assemblySummary: assemblySummary || null
             });
         }
     }
@@ -2118,19 +2052,45 @@ async function safeViewItem(modelID, expressID) {
 
 async function showElementProperties(modelID, expressID) {
     try {
-        const row = elementIndex.find((item) => String(item.expressID) === String(expressID)) || null;
-        const dbDetail = await fetchComponentDetailFromBackend(expressID, row);
-        if (dbDetail) {
-            const displayProps = buildDisplayPropsFromBackendDetail(dbDetail, row);
-            renderProperties(modelID, expressID, displayProps, dbDetail);
-            return;
-        }
-
         const props = await viewer.IFC.getProperties(modelID, expressID, false, false);
         const ifcManager = viewer.IFC?.loader?.ifcManager;
+        const assemblySummary = await ensureAssemblySummaryForExpressID(expressID);
+
         const materialNames = await getMaterialNamesForElement(ifcManager, modelID, expressID);
-        const displayProps = buildDisplayPropsFromElement(props, row, materialNames);
-        renderProperties(modelID, expressID, displayProps);
+
+        let mats = null;
+        try {
+            mats = await ifcManager?.getMaterialsProperties?.(modelID, expressID, false);
+        } catch {
+            mats = null;
+        }
+
+        let psets = null;
+        try {
+            psets = await ifcManager?.getPropertySets?.(modelID, expressID, true);
+        } catch {
+            try {
+                psets = await ifcManager?.getPropertySets?.(modelID, expressID, false);
+            } catch {
+                psets = null;
+            }
+        }
+
+        let types = null;
+        try {
+            types = await ifcManager?.getTypeProperties?.(modelID, expressID, false);
+        } catch {
+            types = null;
+        }
+
+        props['材质'] = materialNames.length ? materialNames.join('、') : '无';
+        const weight = getWeightFromPropertySets(psets);
+        props['重量'] = weight == null ? '无' : weight;
+
+        const row = elementIndex.find((item) => String(item.expressID) === String(expressID)) || null;
+        const displayProps = assemblySummary ? buildChineseSummaryProps(assemblySummary, row) : props;
+        const detailsObject = { ...props, psets, mats, types, assemblySummary };
+        renderProperties(modelID, expressID, displayProps, detailsObject);
     } catch (e) {
         console.error('获取构件基础属性失败。', e);
         propsContainer.innerHTML = '<p class="placeholder">获取属性失败，请尝试选择其他构件。</p>';
@@ -2393,13 +2353,6 @@ function toDisplayNumber(value) {
     return Number.isFinite(num) ? String(num) : String(value);
 }
 
-function sanitizeComponentMarkForQuery(value) {
-    if (value == null) return '';
-    const mark = String(value).trim();
-    if (!mark) return '';
-    return mark.replace(/\(\?\)/g, '').trim();
-}
-
 function buildChineseSummaryProps(summary, row = null) {
     const data = summary || {};
     return {
@@ -2416,129 +2369,6 @@ function buildChineseSummaryProps(summary, row = null) {
         '材质': data.material || '无',
         '主规格': data.mainSpec || '无',
         '主零件编号': data.mainReference || '无'
-    };
-}
-
-async function fetchComponentDetailFromBackend(expressID, row = null) {
-    if (!currentProjectID) return null;
-    try {
-        const params = new URLSearchParams();
-        params.set('expressID', String(expressID));
-        const response = await fetch(`/api/projects/${encodeURIComponent(String(currentProjectID))}/components/detail?${params.toString()}`);
-        const data = await response.json().catch(() => ({}));
-        if (response.ok && data && data.success && data.data) {
-            return data.data;
-        }
-        if (response.status && response.status !== 404) {
-            console.warn('[IFC] fetchComponentDetailFromBackend response:', response.status, data && data.message ? data.message : data);
-        }
-    } catch (error) {
-        console.warn('[IFC] fetchComponentDetailFromBackend failed:', error);
-    }
-    return null;
-}
-
-function buildDisplayPropsFromBackendDetail(detail, row = null) {
-    const data = detail || {};
-    return {
-        '构件编号': data.componentMark || (row && row.componentMark) || '无',
-        '位置编码': data.positionCode || '无',
-        '下标高': data.bottomElevation || '无',
-        '上标高': data.topElevation || '无',
-        '长度': toDisplayNumber(data.length),
-        '宽度': toDisplayNumber(data.width),
-        '面积': toDisplayNumber(data.area),
-        '构件重量': toDisplayNumber(data.castUnitWeight),
-        '净重': toDisplayNumber(data.weightNet),
-        '毛重': toDisplayNumber(data.weightGross),
-        '材质': data.material || '无',
-        '主规格': data.mainSpec || data.spec || '无',
-        '主零件编号': data.mainReference || '无'
-    };
-}
-
-function findPropValue(source, candidates) {
-    if (!source || !candidates || !candidates.length) return null;
-
-    const normalizedCandidates = candidates.map((item) => String(item).toLowerCase());
-    const stack = [source];
-    const seen = new WeakSet();
-
-    while (stack.length) {
-        const current = stack.pop();
-        if (!current || typeof current !== 'object') continue;
-        if (seen.has(current)) continue;
-        seen.add(current);
-
-        for (const key of Object.keys(current)) {
-            const value = current[key];
-            if (normalizedCandidates.includes(String(key).toLowerCase())) {
-                const unwrapped = unwrapIfcValue(value);
-                if (unwrapped !== null && unwrapped !== undefined && unwrapped !== '') {
-                    return unwrapped;
-                }
-                if (value !== null && value !== undefined && value !== '') {
-                    return value;
-                }
-            }
-
-            if (!value || typeof value !== 'object') continue;
-            if (Array.isArray(value)) {
-                for (const item of value) stack.push(item);
-            } else {
-                stack.push(value);
-            }
-        }
-    }
-
-    return null;
-}
-
-function normalizeDisplayValue(value) {
-    if (value == null || value === '') return '无';
-    if (typeof value === 'object') {
-        const unwrapped = unwrapIfcValue(value);
-        if (unwrapped != null && unwrapped !== '') return String(unwrapped);
-        return '无';
-    }
-    return String(value);
-}
-
-function formatMetricValue(value) {
-    const raw = unwrapIfcValue(value);
-    if (raw == null || raw === '') return '无';
-    const num = Number(raw);
-    return Number.isFinite(num) ? String(num) : String(raw);
-}
-
-function buildDisplayPropsFromElement(props, row = null, materialNames = []) {
-    const componentMark = (row && row.componentMark) || unwrapIfcString(props?.Tag) || unwrapIfcString(props?.Name) || '';
-    const positionCode = findPropValue(props, ['Assembly/Cast unit position code', 'Position', 'PositionCode']);
-    const bottomElevation = findPropValue(props, ['Assembly/Cast unit bottom elevation', 'Bottom elevation', 'BottomElevation']);
-    const topElevation = findPropValue(props, ['Assembly/Cast unit top elevation', 'Top elevation', 'TopElevation']);
-    const length = findPropValue(props, ['LENGTH_GROSS', 'LENGTH', 'Length']);
-    const width = findPropValue(props, ['Width', 'WIDTH']);
-    const area = findPropValue(props, ['AREA', 'Area', 'NetArea', 'OuterSurfaceArea']);
-    const weight = findPropValue(props, ['Assembly/Cast unit weight', 'WEIGHT', 'Weight']);
-    const netWeight = findPropValue(props, ['WEIGHT_NET', 'NetWeight']);
-    const grossWeight = findPropValue(props, ['WEIGHT_GROSS', 'GrossWeight']);
-    const mainSpec = unwrapIfcString(props?.ObjectType) || unwrapIfcString(props?.Name) || '';
-    const mainReference = unwrapIfcString(props?.Tag) || findPropValue(props, ['Reference']) || '';
-
-    return {
-        '构件编号': normalizeDisplayValue(componentMark),
-        '位置编码': normalizeDisplayValue(positionCode),
-        '下标高': normalizeDisplayValue(bottomElevation),
-        '上标高': normalizeDisplayValue(topElevation),
-        '长度': formatMetricValue(length),
-        '宽度': formatMetricValue(width),
-        '面积': formatMetricValue(area),
-        '构件重量': formatMetricValue(weight),
-        '净重': formatMetricValue(netWeight),
-        '毛重': formatMetricValue(grossWeight),
-        '材质': materialNames.length ? materialNames.join('、') : '无',
-        '主规格': normalizeDisplayValue(mainSpec),
-        '主零件编号': normalizeDisplayValue(mainReference)
     };
 }
 
@@ -2615,7 +2445,6 @@ async function loadIfcFromUrl(ifcUrl) {
 window.addEventListener('DOMContentLoaded', () => {
     applyEmbedModeFromUrl();
     const params = new URLSearchParams(window.location.search);
-    currentProjectID = params.get('projectId') || '';
     const ifcUrl = params.get('ifcUrl');
     if (ifcUrl) {
         console.log('检测到 URL 参数 ifcUrl，准备自动加载...');
