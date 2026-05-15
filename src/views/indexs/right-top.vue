@@ -11,7 +11,7 @@
         <img :src="starInfo.photoUrl || '/people.jpg'" alt="班组照片" />
       </div>
       <div class="pioneer_info">
-        <div class="pioneer_name">{{ starInfo.groupName }}</div>
+        <div class="pioneer_name">{{ starInfo.groupName || '未分配班组' }}</div>
         <div class="pioneer_title">本月标兵</div>
         <div class="rates_container">
           <div class="rate_circle">
@@ -23,10 +23,10 @@
                   cx="50" 
                   cy="50" 
                   r="45" 
-                  :style="{ strokeDashoffset: 283 - (283 * starInfo.passingRate) / 100 }"
+                  :style="{ strokeDashoffset: 283 - (283 * Number(starInfo.passingRate || 0)) / 100 }"
                 />
               </svg>
-              <div class="rate_val">{{ starInfo.passingRate }}%</div>
+              <div class="rate_val">{{ Number(starInfo.passingRate || 0) }}%</div>
             </div>
             <div class="rate_label">装配合格率</div>
           </div>
@@ -63,7 +63,6 @@
 </template>
 
 <script>
-import axios from 'axios';
 import { canEditFeature, getAuthHeaders } from '@/utils'
 
 export default {
@@ -72,8 +71,8 @@ export default {
       isEditing: false,
       canEdit: false,
       starInfo: {
-        groupName: '一班组',
-        passingRate: 98,
+        groupName: '',
+        passingRate: 0,
         photoUrl: '/people.jpg'
       },
       tempInfo: {
@@ -105,7 +104,7 @@ export default {
         const response = await fetch('/api/star', { headers: getAuthHeaders() });
         const data = await response.json();
         if (data) {
-          this.starInfo = data.star || data; // Handle both wrapper format and direct data
+          this.starInfo = { ...(data.star || data) };
         }
       } catch (err) {
         console.error('获取标兵信息失败', err);
@@ -137,7 +136,7 @@ export default {
         const data = await response.json();
         
         if (data.success || data.photoUrl) {
-          this.starInfo = data.data || data;
+          this.starInfo = { ...(data.data || data) };
           this.$Message.success('保存成功');
         } else {
           throw new Error(data.message || '保存失败');
@@ -152,24 +151,30 @@ export default {
       this.$refs.fileInput.click();
     },
     async handleFileUpload(event) {
-      console.log('handleFileUpload called');
       const file = event.target.files[0];
-      if (!file) {
-        console.log('No file selected');
-        return;
-      }
+      if (!file) return;
       if (!this.canEdit) {
         if (this.$Message && this.$Message.warning) this.$Message.warning('当前账号仅支持查看')
         else alert('当前账号仅支持查看')
         event.target.value = '';
         return
       }
-      console.log('File selected:', file);
+
+      let uploadFile = file;
+      try {
+        const buffer = await file.arrayBuffer();
+        uploadFile = new File([buffer], file.name, {
+          type: file.type || 'application/octet-stream',
+          lastModified: Date.now()
+        });
+      } catch (e) {
+        uploadFile = file;
+      }
 
       const formData = new FormData();
-      formData.append('photo', file);
       formData.append('groupName', this.tempInfo.groupName || this.starInfo.groupName);
       formData.append('passingRate', this.tempInfo.passingRate || this.starInfo.passingRate);
+      formData.append('photo', uploadFile);
 
       try {
         // 使用相对路径，让浏览器自动处理域名和端口
@@ -180,14 +185,12 @@ export default {
         });
         
         const data = await response.json();
-        console.log('Upload response data:', data);
 
         if (data.success || data.photoUrl || (data.data && data.data.photoUrl)) {
-          this.starInfo = data.data || data;
+          this.starInfo = { ...(data.data || data) };
           this.tempInfo = { ...this.starInfo };
           this.$Message.success('照片上传成功');
         } else {
-          console.error('Upload failed with success: false');
           this.$Message.error('上传失败: ' + (data.message || '未知异常，请联系管理员！'));
         }
       } catch (err) {

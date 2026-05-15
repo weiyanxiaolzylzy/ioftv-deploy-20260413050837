@@ -50,6 +50,7 @@
             ref="projectViewer"
             :key="'project-' + projectIfcUrl"
             :ifcUrl="projectIfcUrl"
+            :projectId="selectedElement && selectedElement.projectId ? selectedElement.projectId : (currentPlanItem && currentPlanItem.projectId ? currentPlanItem.projectId : '')"
             :enablePick="true"
             :showHints="false"
             :backgroundColor="0x051020"
@@ -74,7 +75,7 @@
       <!-- 右侧：点云模型 -->
       <div class="model_view">
         <div class="view_title">
-          <span class="dot point_dot"></span> 点云模型 (LiDAR)
+          <span class="dot point_dot"></span> 点云模型
         </div>
         <div class="canvas_wrap" id="point-cloud-container">
           <PlyViewer
@@ -110,27 +111,15 @@
               </div>
             </div>
 
-            <div class="info_item issues" v-if="currentComponent.issues && currentComponent.issues.length > 0">
+            <div class="info_item issues">
               <div class="label">不合格项</div>
-              <div class="issue_list">
+              <div v-if="currentComponent.issues && currentComponent.issues.length > 0" class="issue_list">
                 <div class="issue_tag" v-for="(issue, index) in currentComponent.issues" :key="index">
                   {{ issue }}
                 </div>
               </div>
+              <div v-else class="value">---</div>
             </div>
-
-            <!-- 构件详细信息（当有选中构件时显示） -->
-            <template v-if="selectedElement">
-              <div class="divider"></div>
-              <div class="info_item detail">
-                <div class="label">类型</div>
-                <div class="value small">{{ selectedElement.type || '-' }}</div>
-              </div>
-              <div class="info_item detail">
-                <div class="label">GlobalId</div>
-                <div class="value small mono">{{ selectedElement.globalId || '-' }}</div>
-              </div>
-            </template>
           </div>
         </div>
       </div>
@@ -152,6 +141,7 @@
             :key="'project-fs-' + projectIfcUrl"
             ref="projectViewerFs"
             :ifcUrl="projectIfcUrl"
+            :projectId="selectedElement && selectedElement.projectId ? selectedElement.projectId : (currentPlanItem && currentPlanItem.projectId ? currentPlanItem.projectId : '')"
             :enablePick="true"
             :showHints="false"
             :backgroundColor="0x051020"
@@ -171,6 +161,7 @@
 import ComponentDetailViewport from '@/components/ComponentDetailViewport.vue';
 import AdvancedIfcViewer from '@/components/AdvancedIfcViewer.vue';
 import PlyViewer from '@/components/PlyViewer.vue';
+import { getAuthHeaders } from '@/utils';
 
 export default {
   name: 'RightBottom',
@@ -222,7 +213,7 @@ export default {
   mounted() {
     this.loadTodayPlan();
     this.checkSelectedComponent();
-    this.loadProjectFromStorage();
+    this.loadActiveProject();
     if (this.$bus) {
       this.$bus.$on('project-ifc-change', this.onProjectIfcChange);
       this.$bus.$on('project-change', this.onProjectChangeAndCheck);
@@ -255,6 +246,9 @@ export default {
       for (const source of sources) {
         if (!source || typeof source !== 'object') continue;
         const code =
+          source.componentMark ||
+          source.componentName ||
+          source.name ||
           source.componentId ||
           source.ifcGlobalId ||
           source.globalId ||
@@ -265,37 +259,45 @@ export default {
       }
       return '---';
     },
-    // ─── 从 localStorage 读取今日检测计划 ──────────────────────────────────
-    loadTodayPlan() {
-      try {
-        const today = new Date().toISOString().slice(0, 10);
-        const projects = JSON.parse(localStorage.getItem('cm_projects') || '[]');
-        const list = [];
-        for (const p of (Array.isArray(projects) ? projects : [])) {
-          for (const c of (p.components || [])) {
-            if ((c.planDate === today) && c.ifcElementId) {
-              list.push({
-                projectName: p.name || '',
-                projectId: p.id || '',
-                componentName: c.name || '',
-                componentId: c.id || '',
-                type: c.ifcType || '',
-                team: c.teamLeader || '',
-                inspector: c.qualityInspector || '',
-                planDate: c.planDate,
-                ifcUrl: c.ifcUrl || p.ifcUrl || '',
-                ifcElementId: c.ifcElementId || '',
-                ifcGlobalId: c.ifcGlobalId || '',
-              });
-            }
-          }
-        }
-        this.todayPlanList = list;
-        this.currentPlanIndex = 0;
-        this.syncComponentInfo();
-      } catch (e) {
-        this.todayPlanList = [];
+    getComponentDisplayName(...sources) {
+      for (const source of sources) {
+        if (!source || typeof source !== 'object') continue;
+        const name =
+          source.componentName ||
+          source.name ||
+          '';
+        if (name) return String(name);
       }
+      return '';
+    },
+    // ─── 今日检测计划：统一以后端为准 ──────────────────────────────────
+    async loadTodayPlan() {
+      try {
+        const res = await fetch('/api/today-plan', { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.success && Array.isArray(data.data)) {
+          this.todayPlanList = data.data.map((item) => ({
+            projectName: item.project || '',
+            projectId: item.projectId || '',
+            componentName: item.componentName || '',
+            componentMark: item.componentMark || item.componentName || '',
+            componentId: item.componentId || '',
+            type: item.type || '',
+            team: item.team || '',
+            inspector: item.inspector || '',
+            planDate: item.planDate || '',
+            ifcUrl: item.ifcUrl || '',
+            ifcElementId: item.ifcElementId || '',
+            ifcGlobalId: item.ifcGlobalId || '',
+          }));
+          this.currentPlanIndex = 0;
+          this.syncComponentInfo();
+          return;
+        }
+      } catch (e) { /* ignore */ }
+      this.todayPlanList = [];
+      this.currentPlanIndex = 0;
+      this.syncComponentInfo();
     },
 
     // ─── 上一条 / 下一条 ───────────────────────────────────────────────────
@@ -317,18 +319,22 @@ export default {
     syncComponentInfo() {
       const item = this.currentPlanItem;
       if (!item) return;
+      const detail = item.detail || null;
       this.selectedElement = {
         expressID: Number(item.ifcElementId) || null,
         globalId: item.ifcGlobalId || '',
-        name: item.componentName || '',
+        name: (detail && (detail.componentMark || detail.name)) || item.componentMark || item.componentName || '',
         type: item.type || '',
+        componentMark: (detail && detail.componentMark) || item.componentMark || '',
+        projectId: item.projectId || '',
+        detail
       };
       this.currentComponent = {
-        id: this.resolveComponentCode(item),
+        id: this.resolveComponentCode(detail, item),
         status: '待检测',
         issues: [],
       };
-      const componentCode = this.resolveComponentCode(item);
+      const componentCode = this.resolveComponentCode(detail, item);
       if (componentCode && componentCode !== '---') {
         localStorage.setItem('current_component_mark', componentCode);
       }
@@ -360,18 +366,26 @@ export default {
     },
 
     // ─── 项目模型相关 ───────────────────────────────────────────────────────
-    loadProjectFromStorage() {
+    async loadActiveProject() {
       try {
-        const projects = JSON.parse(localStorage.getItem('cm_projects') || '[]');
-        const aid = localStorage.getItem('cm_activeId') || '';
-        const active = (Array.isArray(projects) ? projects : []).find(p => String(p.id) === String(aid))
-          || (Array.isArray(projects) ? projects[0] : null);
-        if (active && active.ifcUrl) this.projectIfcUrl = this.resolveAbsUrl(active.ifcUrl);
+        const res = await fetch('/api/active-project', { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.success && data.data) {
+          if (data.data.ifcUrl) this.projectIfcUrl = this.resolveAbsUrl(data.data.ifcUrl);
+          return;
+        }
       } catch (e) { /* ignore */ }
+      this.projectIfcUrl = '';
     },
 
     onProjectIfcChange(ifcUrl) { this.projectIfcUrl = this.resolveAbsUrl(ifcUrl) || ''; },
-    onProjectChange(project) { if (project && project.ifcUrl) this.projectIfcUrl = this.resolveAbsUrl(project.ifcUrl); },
+    onProjectChange(project) {
+      if (project && project.ifcUrl) {
+        this.projectIfcUrl = this.resolveAbsUrl(project.ifcUrl);
+        return;
+      }
+      this.projectIfcUrl = '';
+    },
     onProjectChangeAndCheck(project) {
       this.onProjectChange(project);
       this.loadTodayPlan();
@@ -383,7 +397,6 @@ export default {
     },
     onStorageChange(e) {
       if (e.key === 'cm_selected_component') this.checkSelectedComponent();
-      if (e.key === 'cm_projects') this.loadTodayPlan();
     },
     checkSelectedComponent() {
       try {
@@ -403,7 +416,8 @@ export default {
         this.todayPlanList.unshift({
           projectName: '',
           projectId: sel.projectId || '',
-          componentName: sel.name || '',
+          componentName: sel.componentName || sel.name || '',
+          componentMark: sel.componentMark || '',
           componentId: sel.globalId || String(sel.expressID || ''),
           type: '',
           team: '',
@@ -412,6 +426,7 @@ export default {
           ifcUrl: sel.ifcUrl,
           ifcElementId: String(sel.expressID),
           ifcGlobalId: sel.globalId || '',
+          detail: sel.detail || null,
         });
         this.currentPlanIndex = 0;
         this.syncComponentInfo();
@@ -480,13 +495,33 @@ export default {
 
     async handleDetectionMessage(data) {
       if (data.action === 'highlight') {
-        const { reason, expressID, name, globalId } = data;
-        this.selectedElement = { expressID, globalId: globalId || '', name: name || '', type: '' };
+        const { reason, expressID, name, globalId, componentMark, componentName } = data;
+        const resolvedMark = this.resolveComponentCode(
+          { componentMark, componentName, name, globalId, expressID },
+          this.currentPlanItem,
+          this.selectedElement
+        );
+        const resolvedName = this.getComponentDisplayName(
+          { componentName, name },
+          this.currentPlanItem,
+          this.selectedElement
+        );
+        this.selectedElement = {
+          expressID,
+          globalId: globalId || '',
+          name: resolvedName,
+          componentMark: resolvedMark !== '---' ? resolvedMark : '',
+          projectId: this.currentPlanItem && this.currentPlanItem.projectId ? this.currentPlanItem.projectId : '',
+          type: ''
+        };
         this.currentComponent = {
-          id: this.resolveComponentCode({ globalId, expressID }),
+          id: resolvedMark,
           status: reason === '合格' ? '合格' : '不合格',
           issues: reason && reason !== '合格' ? [reason] : [],
         };
+        if (resolvedMark && resolvedMark !== '---') {
+          localStorage.setItem('current_component_mark', resolvedMark);
+        }
       }
     },
 

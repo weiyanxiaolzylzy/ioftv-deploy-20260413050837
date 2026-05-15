@@ -210,11 +210,10 @@ module.exports = {
         target: devApiTarget,
         changeOrigin: true
       },
-      // 代理 IFC 独立查看器（开发模式下 Vite 在 5173 端口）
+      // IFC 查看器统一走后端静态托管的 /ifc，避免依赖本地 Vite 子服务。
       '/ifc': {
-        target: 'http://localhost:5173',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/ifc/, '')
+        target: devApiTarget,
+        changeOrigin: true
       }
     }
   },

@@ -25,14 +25,14 @@
           <div class="camera_label">左相机 (Left)</div>
           <div class="img_placeholder">
             <div class="scanner_line"></div>
-            <img src="/img/welcome.jpg" alt="Left Camera" />
+            <img src="/img/xiangji.jpg" alt="Left Camera" />
           </div>
         </div>
         <div class="img_box">
           <div class="camera_label">右相机 (Right)</div>
           <div class="img_placeholder">
             <div class="scanner_line"></div>
-            <img src="/img/welcome.jpg" alt="Right Camera" />
+            <img src="/img/xiangji.jpg" alt="Right Camera" />
           </div>
         </div>
       </template>
@@ -41,7 +41,7 @@
           <div class="camera_label">主相机 (Main)</div>
           <div class="img_placeholder">
             <div class="scanner_line"></div>
-            <img src="/img/welcome.jpg" alt="Main Camera" />
+            <img src="/img/xiangji.jpg" alt="Main Camera" />
           </div>
         </div>
       </template>

@@ -61,14 +61,6 @@
         </div>
       </div>
 
-      <!-- 班组选择浮窗（快速选择当前检测班组） -->
-      <div class="quick-group-panel" v-if="currentTab !== 'groups'">
-        <div class="quick-group-label">当前班组</div>
-        <select v-model="currentGroupId" class="quick-group-select" @change="onQuickGroupChange">
-          <option value="">-- 请选择 --</option>
-          <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
-        </select>
-      </div>
     </div>
   </ScaleScreen>
 </template>
@@ -112,11 +104,7 @@ export default {
         edgeLightFit: 1,
         openCloseDegree: 3,
         exposure: -6
-      },
-      // 班组相关
-      groups: [],
-      currentGroupId: '',
-      currentGroupName: ''
+      }
     }
   },
   created() {
@@ -139,13 +127,9 @@ export default {
       }
     }
 
-    // 从 localStorage 恢复当前班组选择
-    this.currentGroupId = localStorage.getItem('currentGroupId') || ''
-    this.currentGroupName = localStorage.getItem('currentGroupName') || ''
   },
   mounted() {
     this.timeFn();
-    this.fetchGroups();
   },
   beforeDestroy() {
     clearInterval(this.timing);
@@ -166,44 +150,6 @@ export default {
     },
     openGroupSettings() {
       this.currentTab = 'groups'
-      // 刷新班组列表
-      this.fetchGroups()
-    },
-    async fetchGroups() {
-      try {
-        const response = await fetch('/api/groups', { headers: getAuthHeaders() });
-        const data = await response.json();
-        this.groups = Array.isArray(data) ? data : [];
-        // 如果当前班组ID不存在于列表中，清除选择
-        if (this.currentGroupId && !this.groups.find(g => String(g.id) === String(this.currentGroupId))) {
-          this.currentGroupId = ''
-          this.currentGroupName = ''
-          localStorage.removeItem('currentGroupId')
-          localStorage.removeItem('currentGroupName')
-        }
-      } catch (err) {
-        console.error('获取班组列表失败', err);
-      }
-    },
-    onQuickGroupChange() {
-      const group = this.groups.find(g => String(g.id) === String(this.currentGroupId))
-      if (group) {
-        this.currentGroupName = group.name
-        localStorage.setItem('currentGroupId', this.currentGroupId)
-        localStorage.setItem('currentGroupName', this.currentGroupName)
-      } else {
-        this.currentGroupId = ''
-        this.currentGroupName = ''
-        localStorage.removeItem('currentGroupId')
-        localStorage.removeItem('currentGroupName')
-      }
-      // 通知 workspace-view 当前班组变化
-      if (this.$bus) {
-        this.$bus.$emit('current-group-changed', {
-          groupId: this.currentGroupId,
-          groupName: this.currentGroupName
-        })
-      }
     }
   }
 }

@@ -12,7 +12,6 @@
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.6",
-    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "multer": "^2.0.2",
     "web-ifc": "0.0.77",

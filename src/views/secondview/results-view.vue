@@ -94,10 +94,6 @@
           </select>
           <button class="btn btn-preset" @click="openPresetModal">预设管理</button>
           <div class="action-btns">
-            <button class="btn btn-outline" @click="downloadTemplate" :disabled="!selectedTemplateId">下载模板</button>
-            <button class="btn btn-primary" @click="exportFilled" :disabled="!canEdit || !selectedTemplateId || exporting">
-              {{ exporting ? '导出中…' : '导出 Excel' }}
-            </button>
             <button class="btn btn-pdf" @click="exportPDF" :disabled="!canEdit || !selectedTemplateId || exporting">
               导出 PDF
             </button>
@@ -185,7 +181,6 @@
               <input v-model="presetEditor.qualityInspectorName" class="modal-input" />
             </div>
           </div>
-          <div class="modal-hint">导出 Excel 时将自动写入三位人员姓名。</div>
         </div>
         <div class="modal-foot">
           <button class="btn" @click="resetPresetEditor">恢复默认</button>
@@ -298,6 +293,7 @@ export default {
       ifcFiles: [],
       selectedIfcUrl: '',
       componentNo: '',
+      selectedComponentDetail: null,
       rowFilter: 'all',
       rows: [],
       activeProjectName: '',
@@ -334,6 +330,16 @@ export default {
         id: '', groupName: '', selfInspectorName: '', teamLeaderName: '', qualityInspectorName: ''
       }
     },
+    activeAssignment() {
+      const detail = this.selectedComponentDetail || {}
+      return {
+        groupName: detail.teamName || detail.teamLeader || this.selectedPreset.groupName || '',
+        selfInspectorName: detail.selfInspector || this.selectedPreset.selfInspectorName || '',
+        teamLeaderName: detail.teamLeader || this.selectedPreset.teamLeaderName || '',
+        qualityInspectorName: detail.qualityInspector || this.selectedPreset.qualityInspectorName || '',
+        qualityManagerName: detail.qualityManager || ''
+      }
+    },
     visibleRows() {
       const all = this.rows || []
       if (this.rowFilter === 'ng') return all.filter((r) => r.verdict === '不合格')
@@ -352,6 +358,7 @@ export default {
   mounted() {
     this.loadComponentNo()
     this.fetchActiveProject()
+    this.fetchSelectedComponentDetail()
     this.fetchQcTemplates()
     this.loadGroupPresets()
     this.fetchGroups()  // 从后端获取班组列表，同步到 presets
@@ -407,6 +414,24 @@ export default {
       } else {
         const stored = localStorage.getItem('current_component_mark')
         if (stored) this.componentNo = stored
+      }
+    },
+    async fetchSelectedComponentDetail() {
+      try {
+        const activeRes = await axios.get('/api/active-project')
+        const activePayload = this.normalizeAxiosPayload(activeRes)
+        const projectId = activePayload && activePayload.data ? activePayload.data.id : ''
+        if (!projectId || !this.componentNo) return
+        const res = await axios.get(`/api/projects/${projectId}/components/detail`, {
+          params: { componentMark: this.componentNo },
+          headers: getAuthHeaders()
+        })
+        const payload = this.normalizeAxiosPayload(res)
+        if (payload && payload.success && payload.data) {
+          this.selectedComponentDetail = payload.data
+        }
+      } catch (e) {
+        console.warn('获取当前构件班组信息失败', e)
       }
     },
     notifyNoPermission() {
@@ -561,71 +586,6 @@ export default {
         if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
     },
-    async exportQCForComponent() {
-      if (!this.canEdit) { this.notifyNoPermission(); return }
-      await this.exportFilled()
-    },
-    async downloadTemplate() {
-      if (!this.selectedTemplateId) return
-      try {
-        const res = await axios.get(`/api/qc-templates/${encodeURIComponent(this.selectedTemplateId)}/download`, { responseType: 'blob' })
-        const payload = this.normalizeAxiosPayload(res)
-        const blob = payload instanceof Blob ? payload : new Blob([payload], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url; a.download = this.selectedTemplateId
-        document.body.appendChild(a); a.click(); a.remove()
-        URL.revokeObjectURL(url)
-      } catch (e) {
-        this.$Message.warning('下载失败')
-      }
-    },
-    async exportFilled() {
-      if (!this.canEdit) { this.notifyNoPermission(); return }
-      if (!this.selectedTemplateId) return
-      this.exporting = true
-      try {
-        const payloadRows = (this.rows || []).map((r) => ({
-          seq: r.seq,
-          name: r.itemName,
-          designValue: r.designValue,
-          factoryValue: r.factoryValue || '',
-          factoryValue2: r.factoryValue2 || '',
-          measuredValue: r.measuredValue,
-          deviation: r.deviation,
-          verdict: r.verdict,
-          toleranceText: r.toleranceText
-        }))
-        const res = await axios.post(
-          `/pyapi/api/qc-export/${encodeURIComponent(this.selectedTemplateId)}`,
-          {
-            componentNo: this.componentNo,
-            rows: payloadRows,
-            meta: {
-              groupName: this.selectedPreset.groupName,
-              selfInspectorName: this.selectedPreset.selfInspectorName,
-              teamLeaderName: this.selectedPreset.teamLeaderName,
-              qualityInspectorName: this.selectedPreset.qualityInspectorName
-            }
-          },
-          { responseType: 'blob', headers: getAuthHeaders() }
-        )
-        const payload = this.normalizeAxiosPayload(res)
-        const blob = payload instanceof Blob ? payload : new Blob([payload], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        const suffix = this.componentNo ? `${this.componentNo}_` : ''
-        a.download = `${suffix}${this.selectedTemplateId}`
-        document.body.appendChild(a); a.click(); a.remove()
-        URL.revokeObjectURL(url)
-        this.$Message.success('已导出')
-      } catch (e) {
-        this.$Message.warning('导出失败')
-      } finally {
-        this.exporting = false
-      }
-    },
     async exportPDF() {
       if (!this.canEdit) { this.notifyNoPermission(); return }
       if (!this.selectedTemplateId) return
@@ -675,10 +635,10 @@ export default {
           padding-bottom: 10px;
         `
         meta.innerHTML = `
-          <span>班组: ${this.selectedPreset.groupName}</span>
-          <span>自检员: ${this.selectedPreset.selfInspectorName}</span>
-          <span>班组长: ${this.selectedPreset.teamLeaderName}</span>
-          <span>质检员: ${this.selectedPreset.qualityInspectorName}</span>
+          <span>班组: ${this.activeAssignment.groupName || '—'}</span>
+          <span>自检员: ${this.activeAssignment.selfInspectorName || '—'}</span>
+          <span>班组长: ${this.activeAssignment.teamLeaderName || '—'}</span>
+          <span>质检员: ${this.activeAssignment.qualityInspectorName || '—'}</span>
           <span>日期: ${new Date().toLocaleDateString('zh-CN')}</span>
         `
         container.appendChild(meta)
@@ -1033,7 +993,6 @@ export default {
 .modal-field { background: rgba(15, 60, 130, 0.25); border: 1px solid rgba(0, 190, 255, 0.12); border-radius: 10px; padding: 10px 12px; }
 .modal-input { margin-top: 6px; height: 36px; width: 100%; border-radius: 8px; border: 1px solid rgba(0, 190, 255, 0.2); background: rgba(15, 60, 130, 0.35); color: #e8fbff; outline: none; padding: 0 10px; font-weight: 800; font-size: 13px; }
 .modal-input:focus { border-color: rgba(0, 190, 255, 0.55); }
-.modal-hint { margin-top: 12px; color: rgba(255, 255, 255, 0.5); font-size: 12px; }
 .modal-foot { padding: 12px 18px 14px; display: flex; gap: 8px; align-items: center; border-top: 1px solid rgba(0, 190, 255, 0.12); background: rgba(0, 0, 0, 0.15); }
 .spacer { flex: 1; }
 .select { height: 36px; background: rgba(15, 60, 130, 0.4); border: 1px solid rgba(0, 190, 255, 0.3); border-radius: 8px; color: #e8fbff; padding: 0 10px; font-size: 13px; font-weight: 700; outline: none; }

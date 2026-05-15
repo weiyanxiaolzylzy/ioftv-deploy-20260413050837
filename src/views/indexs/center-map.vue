@@ -119,7 +119,8 @@
               <select v-model="batchAssignForm.status">
                 <option value="待检测">待检测</option>
                 <option value="检测中">检测中</option>
-                <option value="已完成">已完成</option>
+                <option value="合格">合格</option>
+                <option value="不合格">不合格</option>
               </select>
             </div>
           </div>
@@ -1065,19 +1066,10 @@ export default {
       }
     },
     _load() {
-      try {
-        const p = JSON.parse(localStorage.getItem('cm_projects') || '[]');
-        const aid = localStorage.getItem('cm_activeId') || '';
-        this.projects = p;
-        this.activeProjectId = aid || null;
-        this.activeProject = aid ? (p.find(function(x) { return x.id === aid; }) || null) : (p[0] || null);
-        if (!this.activeProjectId && p.length > 0) {
-          this.activeProjectId = p[0].id;
-          this.activeProject = p[0];
-        }
-        // 同步高亮项目
-        this.highlightedProject = this.activeProject;
-      } catch (e) { this.projects = []; this.activeProjectId = null; this.activeProject = null; this.highlightedProject = null; }
+      this.projects = [];
+      this.activeProjectId = null;
+      this.activeProject = null;
+      this.highlightedProject = null;
       if (this.$bus) {
         this.$bus.$emit('project-list-update', this.projects);
         this.$bus.$emit('project-change', this.activeProject);
@@ -1085,7 +1077,22 @@ export default {
       }
       this.getData(this.code);
     },
-    fetchProjects() {
+    async fetchProjects() {
+      try {
+        const res = await fetch('/api/projects', { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.success && Array.isArray(data.data)) {
+          this.projects = data.data;
+          this.activeProjectId = data.activeProjectId || (this.projects[0] ? this.projects[0].id : null);
+          this.activeProject = this.activeProjectId
+            ? (this.projects.find((project) => String(project.id) === String(this.activeProjectId)) || null)
+            : (this.projects[0] || null);
+          this.highlightedProject = this.activeProject;
+          this._save();
+          this.getData(this.code);
+          return;
+        }
+      } catch (e) { /* ignore */ }
       this._load();
     },
     openManageModal() {
@@ -1201,6 +1208,11 @@ export default {
           ? this._normalizeIfcElements(result.parse.elements) : [];
         this.addForm.ifcParsedCount = elements.length;
         this.newProjectIfcComponents = this._buildComponentsFromIfcElements(elements);
+        if (result.parse && result.parse.fromCache) {
+          this.$Message.success(`IFC 解析完成，已复用缓存结果，识别 ${elements.length} 个构件`);
+        } else {
+          this.$Message.success(`IFC 解析完成，已重新解析，识别 ${elements.length} 个构件`);
+        }
       } catch (err) {
         this.ifcUploadError = err && err.message ? String(err.message) : '上传失败';
         this.addForm.ifcUrl = '';
@@ -1260,7 +1272,7 @@ export default {
         this.activeProject = { ...p };
         this.highlightedProject = p;
       }
-      this._save();
+        this._save();
       this.showBatchAssignModal = false;
       this.selectedComponentIds[pid] = [];
       this.$Message.success(`批量指派成功，已指派 ${ids.length} 个构件`);
@@ -1323,33 +1335,54 @@ export default {
       this._save();
       this.$Message.success('删除成功');
     },
-    setActiveProject(project) {
-      this.activeProjectId = project.id;
-      this.activeProject = project;
-      this.highlightedProject = project;
-      this._save();
-      this.$Message.success(`已将「${project.name}」设为当前检测项目`);
-      if (this.$bus) {
-        this.$bus.$emit('project-ifc-change', project && project.ifcUrl ? project.ifcUrl : '');
-        this.$bus.$emit('project-change', project);
-        this.$bus.$emit('component-ifc-sync', { projectId: project.id, project });
+    async setActiveProject(project) {
+      if (!project || !project.id) return;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/active`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || !data.success) {
+          throw new Error((data && (data.message || data.msg)) ? String(data.message || data.msg) : '设置当前项目失败');
+        }
+        await this.fetchProjects();
+        const active = this.projects.find((item) => String(item.id) === String(project.id)) || project;
+        this.activeProjectId = active.id;
+        this.activeProject = active;
+        this.highlightedProject = active;
+        this._save();
+        this.$Message.success(`已将「${active.name}」设为当前检测项目`);
+        if (this.$bus) {
+          this.$bus.$emit('project-ifc-change', active && active.ifcUrl ? active.ifcUrl : '');
+          this.$bus.$emit('project-change', active);
+          this.$bus.$emit('component-ifc-sync', { projectId: active.id, project: active });
+        }
+        this.$nextTick(() => {
+          this.refreshMapHighlight();
+        });
+      } catch (error) {
+        this.$Message.error(error && error.message ? String(error.message) : '设置当前项目失败');
       }
-      // 刷新地图高亮效果并飞向项目
-      this.$nextTick(() => {
-        this.refreshMapHighlight();
-      });
     },
-    deleteProject(id) {
+    async deleteProject(id) {
       if (!confirm('确定删除该项目吗？')) return;
-      this.projects = this.projects.filter(x => x.id !== id);
-      if (this.activeProjectId === id) {
-        this.activeProjectId = this.projects[0] ? this.projects[0].id : null;
-        this.activeProject = this.projects[0] || null;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || !data.success) {
+          throw new Error((data && (data.message || data.msg)) ? String(data.message || data.msg) : '删除项目失败');
+        }
+        await this.fetchProjects();
+        this.$Message.success('删除成功');
+      } catch (error) {
+        this.$Message.error(error && error.message ? String(error.message) : '删除项目失败');
       }
-      this._save();
-      this.$Message.success('删除成功');
     },
-        confirmAddProject() {
+        async confirmAddProject() {
       if (!this.addForm.name) { this.$Message.warning('请输入项目名称'); return; }
       const cityName = this.addForm.city || this.addForm.province;
       let coord = this.cityCenter[cityName]
@@ -1367,38 +1400,42 @@ export default {
       // If user uploaded IFC, do NOT auto-add all parsed components.
       // Let user explicitly choose which to import via the "导入IFC构件" feature later.
       const finalComponents = components.length > 0 ? [] : [];
-      const proj = {
-        id: Date.now().toString(),
-        name: this.addForm.name,
-        province: this.addForm.province,
-        city: cityName,
-        center: coord ? [coord[0], coord[1]] : null,
-        components: finalComponents,
-        beamColumnCount: 0,
-        inspectedCount: 0,
-        qualifiedCount: 0,
-        qualifiedRate: '0%',
-        ifcUrl: this.addForm.ifcUrl || '',
-      };
-      this.projects.push(proj);
-      this.activeProjectId = proj.id;
-      this.activeProject = proj;
-      this.highlightedProject = proj;
-      this._save();
-      this.showProjectModal = false;
-      this.showManageModal = false;
-      if (this.addForm.ifcUrl && this.addForm.ifcParsedCount > 0) {
-        this.$Message.success(`项目添加成功（已上传 IFC ${this.addForm.ifcParsedCount} 个构件，请通过「导入IFC构件」选择要添加的构件）`);
-      } else {
-        this.$Message.success('项目添加成功');
+      try {
+        const res = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({
+            name: this.addForm.name,
+            province: this.addForm.province,
+            city: cityName,
+            center: coord ? [coord[0], coord[1]] : null,
+            ifcUrl: this.addForm.ifcUrl || '',
+            ifcFileName: this.addForm.ifcFileName || '',
+            ifcFileSize: 0,
+            beamColumnCount: finalComponents.length
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || !data.success) {
+          throw new Error((data && (data.message || data.msg)) ? String(data.message || data.msg) : '项目添加失败');
+        }
+        await this.fetchProjects();
+        this.showProjectModal = false;
+        this.showManageModal = false;
+        if (this.addForm.ifcUrl && this.addForm.ifcParsedCount > 0) {
+          this.$Message.success(`项目添加成功（已上传 IFC ${this.addForm.ifcParsedCount} 个构件，请通过「导入IFC构件」选择要添加的构件）`);
+        } else {
+          this.$Message.success('项目添加成功');
+        }
+        this.newProjectIfcComponents = [];
+        this.addForm = { name: '', province: '', city: '', ifcUrl: '', ifcFileName: '', ifcParsedCount: 0 };
+        this.$nextTick(() => {
+          this.startCarousel();
+          this.refreshMapHighlight();
+        });
+      } catch (error) {
+        this.$Message.error(error && error.message ? String(error.message) : '项目添加失败');
       }
-      // Reset add-project form after confirming
-      this.newProjectIfcComponents = [];
-      this.addForm = { name: '', province: '', city: '', ifcUrl: '', ifcFileName: '', ifcParsedCount: 0 };
-      this.$nextTick(() => {
-        this.startCarousel();
-        this.refreshMapHighlight();
-      });
     },
     // ── IFC：已有项目导入构件列表 ──────────────────────────────────
     openIfcImport(project) {
@@ -1416,8 +1453,27 @@ export default {
         const expressID = el && el.expressID != null ? String(el.expressID) : '';
         const globalId = el && el.globalId != null ? String(el.globalId) : '';
         const type = el && el.type != null ? String(el.type) : '';
-        const name = el && el.name != null ? String(el.name) : (globalId || (type && expressID ? `${type}-${expressID}` : '未命名构件'));
-        return { expressID, globalId, type, name };
+        const componentMark = el && el.componentMark != null ? String(el.componentMark) : '';
+        const name = el && el.name != null ? String(el.name) : (componentMark || globalId || (type && expressID ? `${type}-${expressID}` : '未命名构件'));
+        return {
+          expressID,
+          globalId,
+          type,
+          name,
+          componentMark,
+          mainSpec: el && el.mainSpec != null ? String(el.mainSpec) : '',
+          positionCode: el && el.positionCode != null ? String(el.positionCode) : '',
+          bottomElevation: el && el.bottomElevation != null ? String(el.bottomElevation) : '',
+          topElevation: el && el.topElevation != null ? String(el.topElevation) : '',
+          length: el && el.length != null ? Number(el.length) : null,
+          width: el && el.width != null ? Number(el.width) : null,
+          area: el && el.area != null ? Number(el.area) : null,
+          castUnitWeight: el && el.castUnitWeight != null ? Number(el.castUnitWeight) : null,
+          weightNet: el && el.weightNet != null ? Number(el.weightNet) : null,
+          weightGross: el && el.weightGross != null ? Number(el.weightGross) : null,
+          material: el && el.material != null ? String(el.material) : '',
+          mainReference: el && el.mainReference != null ? String(el.mainReference) : ''
+        };
       }).filter((x) => x.expressID);
     },
     _buildComponentsFromIfcElements(elements) {
@@ -1425,11 +1481,24 @@ export default {
         const expressID = el.expressID;
         const globalId = el.globalId;
         const typeName = el.type;
-        const name = el.name;
+        const componentMark = el.componentMark || '';
+        const name = componentMark || el.name;
         return {
           id: globalId ? `ifc_${globalId}` : `ifc_${expressID}`,
           name,
-          spec: typeName,
+          componentMark,
+          spec: el.mainSpec || typeName,
+          positionCode: el.positionCode || '',
+          bottomElevation: el.bottomElevation || '',
+          topElevation: el.topElevation || '',
+          length: el.length != null ? Number(el.length) : null,
+          width: el.width != null ? Number(el.width) : null,
+          area: el.area != null ? Number(el.area) : null,
+          castUnitWeight: el.castUnitWeight != null ? Number(el.castUnitWeight) : null,
+          weightNet: el.weightNet != null ? Number(el.weightNet) : null,
+          weightGross: el.weightGross != null ? Number(el.weightGross) : null,
+          material: el.material || '',
+          mainReference: el.mainReference || '',
           teamLeader: '',
           teamName: '',
           teamId: '',
@@ -1458,6 +1527,44 @@ export default {
       }) : [];
       return base.concat(toAdd);
     },
+    async _projectExistsOnServer(projectId) {
+      if (!projectId) return false;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, { headers: getAuthHeaders() });
+        if (!res.ok) return false;
+        const data = await res.json().catch(() => ({}));
+        return !!(data && data.success && data.data);
+      } catch (e) {
+        return false;
+      }
+    },
+    async _syncProjectIfcComponentsIfNeeded(project) {
+      if (!project || !project.id || !project.ifcUrl) return project;
+      const componentCount = Array.isArray(project.components) ? project.components.length : 0;
+      if (componentCount > 0) return project;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/components/sync-ifc`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || !data.success) {
+          throw new Error((data && (data.message || data.msg)) ? String(data.message || data.msg) : '项目 IFC 构件回填失败');
+        }
+        const serverProject = data.project || project;
+        const idx = this.projects.findIndex((x) => String(x.id) === String(project.id));
+        if (idx >= 0) this.$set(this.projects, idx, serverProject);
+        if (this.activeProjectId === serverProject.id) {
+          this.activeProject = serverProject;
+          this.highlightedProject = serverProject;
+        }
+        this._save();
+        return serverProject;
+      } catch (err) {
+        this.$Message.error(err && err.message ? String(err.message) : '项目 IFC 构件回填失败');
+        return project;
+      }
+    },
     toggleIfcImportSelectAll(checked) {
       if (checked) {
         this.ifcImportSelectedIds = this.filteredIfcImportElements.map((e) => e.expressID);
@@ -1480,12 +1587,43 @@ export default {
       if (!project) return;
       const picked = new Set(this.ifcImportSelectedIds.map((x) => String(x)));
       const selectedElements = (this.ifcImportElements || []).filter((e) => picked.has(String(e.expressID)));
+      this.confirmIfcImportToProject(project, selectedElements);
+    },
+    async confirmIfcImportToProject(project, selectedElements) {
       const incoming = this._buildComponentsFromIfcElements(selectedElements);
+      const existsOnServer = await this._projectExistsOnServer(project.id);
+      if (existsOnServer) {
+        try {
+          const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/components/import-ifc`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ elements: selectedElements })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data || !data.success) {
+            throw new Error((data && (data.message || data.msg)) ? String(data.message || data.msg) : '后端导入 IFC 构件失败');
+          }
+          const serverProject = data.project || project;
+          const idx = this.projects.findIndex((x) => String(x.id) === String(project.id));
+          if (idx >= 0) this.$set(this.projects, idx, serverProject);
+          if (this.activeProjectId === serverProject.id) {
+            this.activeProject = serverProject;
+            this.highlightedProject = serverProject;
+          }
+          this._save();
+          this.showIfcImportModal = false;
+          this.$Message.success(`已导入 ${Number(data.added || 0)} 个构件，请在「项目构件管理」中勾选并指派后，才会显示在主页面上`);
+          return;
+        } catch (err) {
+          this.$Message.error(err && err.message ? String(err.message) : '后端导入 IFC 构件失败');
+          return;
+        }
+      }
+
       const before = Array.isArray(project.components) ? project.components.length : 0;
       project.components = this._mergeComponents(project.components, incoming);
       const after = Array.isArray(project.components) ? project.components.length : before;
       const added = Math.max(after - before, 0);
-      // 不再这里更新 beamColumnCount，等批量指派后才更新
       if (this.activeProjectId === project.id) {
         this.activeProject = project;
         this.highlightedProject = project;
@@ -1498,12 +1636,13 @@ export default {
       if (this.importingProjectIfc) return;
       this.showIfcImportModal = false;
     },
-    openIfcViewer(project) {
-      const proj = project || this.activeProject;
+    async openIfcViewer(project) {
+      let proj = project || this.activeProject;
       if (!proj) {
         this.$Message.warning('请先选择或添加项目');
         return;
       }
+      proj = await this._syncProjectIfcComponentsIfNeeded(proj);
       if (!this.$router) {
         window.location.href = '/#/project-ifc?projectId=' + encodeURIComponent(proj.id);
         return;
@@ -1544,10 +1683,25 @@ export default {
         }
         const proj = this.projects.find((x) => String(x.id) === String(this.ifcImportProject.id));
         if (proj) {
-          proj.ifcUrl = url;
-          if (this.activeProjectId === proj.id) {
-            this.activeProject = proj;
-            this.highlightedProject = proj;
+          try {
+            const bindRes = await fetch(`/api/projects/${encodeURIComponent(proj.id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+              body: JSON.stringify({ ifcUrl: url })
+            });
+            const bindData = await bindRes.json().catch(() => ({}));
+            if (!bindRes.ok || !bindData || !bindData.success || !bindData.project) {
+              throw new Error((bindData && (bindData.message || bindData.msg)) ? String(bindData.message || bindData.msg) : '项目 IFC 绑定失败');
+            }
+            const idx = this.projects.findIndex((x) => String(x.id) === String(proj.id));
+            if (idx >= 0) this.$set(this.projects, idx, bindData.project);
+            if (this.activeProjectId === bindData.project.id) {
+              this.activeProject = bindData.project;
+              this.highlightedProject = bindData.project;
+            }
+          } catch (error) {
+            this.projectIfcImportError = error && error.message ? String(error.message) : '项目 IFC 绑定失败';
+            throw error;
           }
         }
         this.ifcImportElements = elements;
@@ -1555,6 +1709,11 @@ export default {
         this.showIfcImportModal = true;
         this._save();
         if (this.$bus) this.$bus.$emit('project-ifc-change', url || '');
+        if (parse && parse.fromCache) {
+          this.$Message.success(`IFC 解析完成，已复用缓存结果，识别 ${elements.length} 个构件`);
+        } else {
+          this.$Message.success(`IFC 解析完成，已重新解析，识别 ${elements.length} 个构件`);
+        }
       } catch (err) {
         this.projectIfcImportError = err && err.message ? String(err.message) : '上传失败';
         if (this.$Message && this.$Message.error) this.$Message.error(this.projectIfcImportError);

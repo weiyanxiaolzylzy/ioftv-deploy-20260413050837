@@ -12,7 +12,6 @@ Production deployment currently follows this structure:
 
 - Nginx serves `/opt/ioftv/dist`
 - Nginx proxies `/api/*` and `/bigscreen/*` to Node on `8890`
-- Nginx proxies `/pyapi/*` to Python on `8765`
 - Nginx serves `/ifc/*` from `/opt/ioftv/ifc/dist`
 
 ## Main Directories
@@ -25,7 +24,7 @@ Production deployment currently follows this structure:
 ├── dist/                   frontend build output
 ├── 上传/                   prepared deployment package
 ├── DEPLOY_49.232.136.57.md deployment notes for current server
-└── requirements_pip.txt    Python dependency list
+└── public/                 shared static assets
 ```
 
 ## Local Development
@@ -113,7 +112,6 @@ Typical upload targets:
 Server-side service summary:
 
 - Node API: `pm2`
-- Python API: `systemd`
 - reverse proxy: `nginx`
 
 Detailed deployment steps:

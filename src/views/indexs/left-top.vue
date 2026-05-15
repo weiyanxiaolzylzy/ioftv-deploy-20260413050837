@@ -74,6 +74,7 @@
 </template>
 
 <script>
+import { getAuthHeaders } from '@/utils'
 let style = {
     fontSize: 32,
     fontWeight: 900,
@@ -88,6 +89,7 @@ export default {
             scope: 'all',
             selectedProjectId: '',
             projects: [],
+            statisticsByProject: {},
             layoutMode: 'regular',
             metricFontSize: 32,
             resizeObserver: null,
@@ -143,12 +145,7 @@ export default {
         }
     },
   created() {
-    this.loadProjectsFromStorage();
-    if (!this.selectedProjectId) {
-      const aid = localStorage.getItem('cm_activeId') || '';
-      this.selectedProjectId = aid || (this.projects[0] ? this.projects[0].id : '');
-    }
-    this.refreshConfigs();
+    this.loadProjects();
     if (this.$bus) {
       this.$bus.$on('project-change', this.onProjectChange);
       this.$bus.$on('project-list-update', this.onProjectListUpdate);
@@ -173,19 +170,62 @@ export default {
       this.usingWindowResizeFallback = false;
     }
   },
-  watch: {
+    watch: {
     scope() {
       if (this.scope === 'single' && !this.selectedProjectId) {
-        const aid = localStorage.getItem('cm_activeId') || '';
-        this.selectedProjectId = aid || (this.projects[0] ? this.projects[0].id : '');
+        this.selectedProjectId = this.projects[0] ? this.projects[0].id : '';
       }
-      this.refreshConfigs();
+      this.refreshConfigs().catch(() => {});
     },
     selectedProjectId() {
-      this.refreshConfigs();
+      this.refreshConfigs().catch(() => {});
     }
   },
   methods: {
+    async loadProjects() {
+      try {
+        const res = await fetch('/api/projects', { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.success && Array.isArray(data.data)) {
+          this.projects = data.data;
+          const aid = data.activeProjectId || '';
+          const nextSelectedId = aid || (this.projects[0] ? this.projects[0].id : '');
+          this.selectedProjectId = nextSelectedId || '';
+          await this.refreshProjectStatistics();
+          await this.refreshConfigs();
+          return;
+        }
+      } catch (e) { /* ignore */ }
+      this.projects = [];
+      this.selectedProjectId = '';
+      await this.refreshProjectStatistics();
+      await this.refreshConfigs();
+    },
+    async fetchStatisticsSummary(projectId) {
+      if (!projectId) return null;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/statistics-summary`, { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.success && data.data) {
+          return data.data;
+        }
+      } catch (e) { /* ignore */ }
+      return null;
+    },
+    async refreshProjectStatistics() {
+      const statsMap = {};
+      const projectIds = new Set((this.projects || []).map((project) => String(project && project.id != null ? project.id : '')).filter(Boolean));
+      if (this.selectedProjectId && !projectIds.has(String(this.selectedProjectId))) {
+        this.selectedProjectId = this.projects[0] ? this.projects[0].id : '';
+      }
+      for (const project of (this.projects || [])) {
+        const pid = project && project.id != null ? String(project.id) : '';
+        if (!pid) continue;
+        const summary = await this.fetchStatisticsSummary(pid);
+        if (summary) statsMap[pid] = summary;
+      }
+      this.statisticsByProject = statsMap;
+    },
     setupResponsiveLayout() {
       this.updateResponsiveLayout();
       if (typeof ResizeObserver === 'function' && this.$refs.overviewContainer) {
@@ -252,29 +292,21 @@ export default {
       if (Array.isArray(projects)) {
         this.projects = projects;
       } else {
-        this.loadProjectsFromStorage();
+        this.loadProjects();
+        return;
       }
       if (this.scope === 'single' && this.selectedProjectId) {
         const exists = this.projects.some(p => String(p.id) === String(this.selectedProjectId));
         if (!exists) this.selectedProjectId = this.projects[0] ? this.projects[0].id : '';
       }
-      this.refreshConfigs();
+      this.refreshProjectStatistics().then(() => this.refreshConfigs()).catch(() => {});
     },
     onProjectChange(project) {
       if (this.scope !== 'single') return;
       if (project && project.id != null) {
         this.selectedProjectId = project.id;
       } else if (!this.selectedProjectId) {
-        const aid = localStorage.getItem('cm_activeId') || '';
-        this.selectedProjectId = aid || (this.projects[0] ? this.projects[0].id : '');
-      }
-    },
-    loadProjectsFromStorage() {
-      try {
-        const p = JSON.parse(localStorage.getItem('cm_projects') || '[]');
-        this.projects = Array.isArray(p) ? p : [];
-      } catch (e) {
-        this.projects = [];
+        this.selectedProjectId = this.projects[0] ? this.projects[0].id : '';
       }
     },
     getStats() {
@@ -285,17 +317,24 @@ export default {
       if (this.scope === 'single') {
         const p = this.projects.find(x => String(x.id) === String(this.selectedProjectId));
         if (!p) return { projectCount: 0, inspectedCount: 0, qualifiedCount: 0, rate: 0 };
-        const inspected = num(p.inspectedCount);
-        const qualified = num(p.qualifiedCount);
+        const summary = this.statisticsByProject[String(p.id)] || null;
+        const inspected = num(summary ? summary.inspected_count : p.inspectedCount);
+        const qualified = num(summary ? summary.qualified_count : p.qualifiedCount);
         const rate = inspected > 0 ? parseFloat(((qualified / inspected) * 100).toFixed(1)) : 0;
         return { projectCount: 0, inspectedCount: inspected, qualifiedCount: qualified, rate };
       }
-      const inspectedCount = this.projects.reduce((acc, p) => acc + num(p.inspectedCount), 0);
-      const qualifiedCount = this.projects.reduce((acc, p) => acc + num(p.qualifiedCount), 0);
+      const inspectedCount = this.projects.reduce((acc, p) => {
+        const summary = this.statisticsByProject[String(p.id)] || null;
+        return acc + num(summary ? summary.inspected_count : p.inspectedCount);
+      }, 0);
+      const qualifiedCount = this.projects.reduce((acc, p) => {
+        const summary = this.statisticsByProject[String(p.id)] || null;
+        return acc + num(summary ? summary.qualified_count : p.qualifiedCount);
+      }, 0);
       const rate = inspectedCount > 0 ? parseFloat(((qualifiedCount / inspectedCount) * 100).toFixed(1)) : 0;
       return { projectCount: this.projects.length, inspectedCount, qualifiedCount, rate };
     },
-    refreshConfigs() {
+    async refreshConfigs() {
       const stats = this.getStats();
       this.setMetricConfig('project', stats.projectCount);
       this.setMetricConfig('detected', stats.inspectedCount);

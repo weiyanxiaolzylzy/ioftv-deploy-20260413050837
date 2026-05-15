@@ -4,13 +4,11 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const XLSX = require('xlsx');
-const ExcelJS = require('exceljs');
-const http = require('http');
 const { fork } = require('child_process');
+const dbApi = require('./database-entry');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8890;
-const PYTHON_API_PORT = Number(process.env.PYTHON_API_PORT) || 8765;
 
 // 健康检查端点（Docker healthcheck 用）
 app.get('/health', (req, res) => {
@@ -19,54 +17,6 @@ app.get('/health', (req, res) => {
 
 app.use(cors());
 app.use(express.json());
-
-// 单独代理 /pyapi/health 到 Python 根路径
-app.get('/pyapi/health', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: PYTHON_API_PORT,
-        path: '/health',
-        method: 'GET',
-        headers: {}
-    };
-    const proxyReq = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res);
-    });
-    proxyReq.on('error', (e) => {
-        res.status(502).json({ error: `Python API 不可用: ${e.message}` });
-    });
-    proxyReq.end();
-});
-
-// 代理 /pyapi/* 请求到 Python IFC 服务（/api/*）
-app.use('/pyapi', (req, res) => {
-    const targetPath = req.originalUrl.replace(/^\/pyapi/, '');
-    const options = {
-        hostname: 'localhost',
-        port: PYTHON_API_PORT,
-        path: targetPath,
-        method: req.method,
-        headers: {}
-    };
-    // 只传递必要的 headers
-    if (req.headers['content-type']) options.headers['Content-Type'] = req.headers['content-type'];
-    if (req.headers['accept']) options.headers['Accept'] = req.headers['accept'];
-
-    const proxyReq = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res);
-    });
-    proxyReq.on('error', (e) => {
-        res.status(502).json({ error: `Python API 不可用: ${e.message}` });
-    });
-    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
-        const bodyStr = JSON.stringify(req.body);
-        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyStr));
-        proxyReq.write(bodyStr);
-    }
-    proxyReq.end();
-});
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR);
@@ -84,6 +34,7 @@ const WASM_DIR = path.join(__dirname, '../public/static/js/wasm');
 const STEEL_QC_DIST_DIR = path.join(__dirname, '../dist-steel-qc');
 const IFC_DIST_DIR = path.join(__dirname, '../ifc/dist');
 const IFC_WASM_DIR = path.join(IFC_DIST_DIR, 'wasm');
+const BANZU_DIR = path.join(__dirname, '..', 'banzu');
 
 // node_modules/web-ifc/ 目录已包含 web-ifc-node.wasm，无需额外 SetWasmPath
 
@@ -91,6 +42,93 @@ ensureDir(IFC_UPLOAD_DIR);
 ensureDir(WASM_DIR);
 const IFC_PARSE_JOBS = new Map();
 const IFC_PARSE_JOB_TTL_MS = 6 * 60 * 60 * 1000;
+
+function normalizeComponentStatus(status) {
+    const raw = String(status || '').trim();
+    if (!raw) return '待检测';
+    if (raw === '已完成') return '合格';
+    if (raw === '待检测' || raw === '检测中' || raw === '合格' || raw === '不合格') return raw;
+    return raw;
+}
+
+function findBanzuPhotoUrlByGroupName(groupName) {
+    if (!groupName || !fs.existsSync(BANZU_DIR)) return '';
+    const normalizedName = String(groupName).trim().toLowerCase();
+    const files = fs.readdirSync(BANZU_DIR);
+    const matched = files.find((file) => {
+        const ext = path.extname(file);
+        const base = path.basename(file, ext).trim().toLowerCase();
+        return base === normalizedName;
+    });
+    return matched ? `/banzu/${encodeURIComponent(matched)}` : '';
+}
+
+async function syncBanzuPhotoMappings() {
+    try {
+        const groupsRes = await dbApi.data.getAllGroups();
+        const groups = groupsRes && groupsRes.success && Array.isArray(groupsRes.data) ? groupsRes.data : [];
+        for (const group of groups) {
+            const mapped = findBanzuPhotoUrlByGroupName(group.name);
+            if (mapped && group.photo_url !== mapped) {
+                await dbApi.data.updateGroup(group.id, { photo_url: mapped });
+            }
+        }
+        const starRes = await dbApi.data.getStar();
+        const star = starRes && starRes.success && starRes.data ? starRes.data : null;
+        if (star && star.group_name) {
+            const mapped = findBanzuPhotoUrlByGroupName(star.group_name);
+            if (mapped && star.photo_url !== mapped) {
+                await dbApi.data.updateStar({
+                    group_id: star.group_id || null,
+                    group_name: star.group_name,
+                    photo_url: mapped,
+                    passing_rate: star.passing_rate != null ? Number(star.passing_rate) : 0,
+                    first_pass_rate: star.first_pass_rate != null ? Number(star.first_pass_rate) : 0,
+                    photo_updated_at: star.photo_updated_at || null
+                });
+            }
+        }
+    } catch (error) {
+        console.warn('[banzu] 班组照片路径同步失败:', error.message);
+    }
+}
+
+function buildBanzuFilename(groupName, originalName = '') {
+    const ext = path.extname(originalName || '') || '.jpg';
+    const rawName = groupName || path.basename(originalName || '', ext) || `banzu_${Date.now()}`;
+    const safeName = String(rawName)
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .replace(/\s+/g, '');
+    return `${safeName}${ext}`;
+}
+
+function finalizeBanzuUpload(file, groupName) {
+    if (!file) return '';
+    ensureDir(BANZU_DIR);
+    const targetName = buildBanzuFilename(groupName, file.originalname || file.filename || '');
+    let finalName = targetName;
+    let targetPath = path.join(BANZU_DIR, finalName);
+    if (file.path && path.resolve(file.path) !== path.resolve(targetPath)) {
+        const fileBuffer = fs.readFileSync(file.path);
+        try {
+            fs.writeFileSync(targetPath, fileBuffer);
+        } catch (error) {
+            if (error && (error.code === 'EBUSY' || error.code === 'EPERM')) {
+                const ext = path.extname(targetName);
+                const base = path.basename(targetName, ext);
+                finalName = `${base}_${Date.now()}${ext}`;
+                targetPath = path.join(BANZU_DIR, finalName);
+                fs.writeFileSync(targetPath, fileBuffer);
+            } else {
+                throw error;
+            }
+        } finally {
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        }
+    }
+    return `/banzu/${encodeURIComponent(finalName)}`;
+}
 
 const createIfcParseJob = (filePath, limit = 8000) => {
     const jobId = `ifcjob_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -120,7 +158,11 @@ const createIfcParseJob = (filePath, limit = 8000) => {
 
     worker.on('message', (message) => {
         if (message && message.success) {
-            finishJob({ status: 'done', parse: message.result || null, error: null });
+            const parseResult = message.result || null;
+            if (parseResult) {
+                console.log(`[IFC Parse] ${path.basename(filePath)} parsed: total=${parseResult.total || 0}, fromCache=${parseResult.fromCache === true}`);
+            }
+            finishJob({ status: 'done', parse: parseResult, error: null });
         } else {
             finishJob({
                 status: 'failed',
@@ -158,7 +200,148 @@ const createIfcParseJob = (filePath, limit = 8000) => {
     return jobId;
 };
 
+function buildImportElementsFromParse(parseResult) {
+    const parse = parseResult || {};
+    const elements = Array.isArray(parse.elements) ? parse.elements : [];
+    const assemblySummaries = Array.isArray(parse.assemblySummaries) ? parse.assemblySummaries : [];
+    const summaryByAssemblyExpressId = new Map();
+    const summaryByAssemblyGlobalId = new Map();
+
+    for (const summary of assemblySummaries) {
+        const assemblyExpressID = summary && summary.expressID != null ? String(summary.expressID).trim() : '';
+        const assemblyGlobalId = summary && summary.globalId ? String(summary.globalId).trim() : '';
+        if (assemblyExpressID) summaryByAssemblyExpressId.set(assemblyExpressID, summary);
+        if (assemblyGlobalId) summaryByAssemblyGlobalId.set(assemblyGlobalId, summary);
+    }
+
+    return elements.map((el) => {
+        const parentAssemblyExpressID = el && el.parentAssemblyExpressID != null ? String(el.parentAssemblyExpressID).trim() : '';
+        const elExpressID = el && el.expressID != null ? String(el.expressID).trim() : '';
+        const elGlobalId = el && el.globalId ? String(el.globalId).trim() : '';
+        const summary = (
+            (parentAssemblyExpressID && summaryByAssemblyExpressId.get(parentAssemblyExpressID)) ||
+            (elExpressID && summaryByAssemblyExpressId.get(elExpressID)) ||
+            (elGlobalId && summaryByAssemblyGlobalId.get(elGlobalId)) ||
+            null
+        );
+        return {
+            ...(el || {}),
+            mainSpec: summary && summary.mainSpec != null ? summary.mainSpec : '',
+            positionCode: summary && summary.positionCode != null ? summary.positionCode : '',
+            bottomElevation: summary && summary.bottomElevation != null ? summary.bottomElevation : '',
+            topElevation: summary && summary.topElevation != null ? summary.topElevation : '',
+            length: summary && summary.length != null ? summary.length : null,
+            width: summary && summary.width != null ? summary.width : null,
+            area: summary && summary.area != null ? summary.area : null,
+            castUnitWeight: summary && summary.castUnitWeight != null ? summary.castUnitWeight : null,
+            weightNet: summary && summary.weightNet != null ? summary.weightNet : null,
+            weightGross: summary && summary.weightGross != null ? summary.weightGross : null,
+            material: summary && summary.material != null ? summary.material : '',
+            mainReference: summary && summary.mainReference != null ? summary.mainReference : ''
+        };
+    });
+}
+
+function buildStableIfcComponentId(projectId, element) {
+    const rawProjectId = String(projectId || '').trim();
+    const globalId = element && element.globalId ? String(element.globalId).trim() : '';
+    const expressId = element && element.expressID != null ? String(element.expressID).trim() : '';
+    const stableKey = globalId || expressId;
+    if (!rawProjectId || !stableKey) return genCompId();
+    return `ifc_${rawProjectId}_${stableKey}`;
+}
+
+async function importIfcElementsToProject(projectId, elements = []) {
+    const projectRes = await dbApi.data.getProjectWithComponentsById(projectId);
+    if (!projectRes.success || !projectRes.data) {
+        return { success: false, status: 404, message: '项目不存在' };
+    }
+
+    const existingByIfcElementId = new Map(
+        (projectRes.data.components || [])
+            .filter((c) => c && c.ifcElementId != null && String(c.ifcElementId).trim() !== '')
+            .map((c) => [String(c.ifcElementId), c])
+    );
+
+    let added = 0;
+    let updated = 0;
+    const seenExpressIds = new Set();
+
+    for (const el of elements) {
+        const expressId = String(el && el.expressID != null ? el.expressID : '');
+        if (!expressId || seenExpressIds.has(expressId)) continue;
+        seenExpressIds.add(expressId);
+
+        const basePayload = {
+            name: (el && (el.componentMark || el.name)) ? String(el.componentMark || el.name) : `构件-${expressId}`,
+            component_mark: el && el.componentMark ? String(el.componentMark) : '',
+            spec: el && el.mainSpec ? String(el.mainSpec) : '',
+            position_code: el && el.positionCode ? String(el.positionCode) : '',
+            bottom_elevation: el && el.bottomElevation ? String(el.bottomElevation) : '',
+            top_elevation: el && el.topElevation ? String(el.topElevation) : '',
+            length_value: el && el.length != null ? Number(el.length) : null,
+            width_value: el && el.width != null ? Number(el.width) : null,
+            area_value: el && el.area != null ? Number(el.area) : null,
+            cast_unit_weight: el && el.castUnitWeight != null ? Number(el.castUnitWeight) : null,
+            weight_net: el && el.weightNet != null ? Number(el.weightNet) : null,
+            weight_gross: el && el.weightGross != null ? Number(el.weightGross) : null,
+            material: el && el.material ? String(el.material) : '',
+            main_reference: el && el.mainReference ? String(el.mainReference) : '',
+            ifc_element_id: expressId,
+            ifc_global_id: el && el.globalId ? String(el.globalId) : '',
+            ifc_type: el && el.type ? String(el.type) : ''
+        };
+
+        const existing = existingByIfcElementId.get(expressId);
+        if (existing && existing.id) {
+            const updateRes = await dbApi.data.updateComponent(String(existing.id), basePayload);
+            if (!updateRes.success) {
+                return { success: false, status: 500, message: updateRes.error || '更新 IFC 构件失败' };
+            }
+            updated++;
+            continue;
+        }
+
+        const createRes = await dbApi.data.createComponent({
+            id: buildStableIfcComponentId(projectId, el),
+            project_id: projectId,
+            ...basePayload,
+            team_id: '',
+            team_name: '',
+            team_leader: '',
+            self_inspector: '',
+            quality_inspector: '',
+            quality_manager: '',
+            plan_date: '',
+            status: '待检测'
+        });
+        if (!createRes.success) {
+            return { success: false, status: 500, message: createRes.error || '导入 IFC 构件失败' };
+        }
+        existingByIfcElementId.set(expressId, { id: buildStableIfcComponentId(projectId, el) });
+        added++;
+    }
+
+    const statsRes = await recalcProjectStats(projectId);
+    if (!statsRes.success) {
+        return { success: false, status: 500, message: statsRes.error || '项目统计更新失败' };
+    }
+
+    const refreshedRes = await dbApi.data.getProjectWithComponentsById(projectId);
+    return {
+        success: true,
+        added,
+        updated,
+        total: refreshedRes.success && refreshedRes.data ? (refreshedRes.data.components || []).length : 0,
+        project: refreshedRes.success ? refreshedRes.data : projectRes.data
+    };
+}
+
 app.use('/uploads', express.static(UPLOAD_DIR));
+if (fs.existsSync(BANZU_DIR)) {
+    app.use('/banzu', express.static(BANZU_DIR));
+}
+syncBanzuPhotoMappings();
 app.use('/wasm', express.static(WASM_DIR));
 if (fs.existsSync(STEEL_QC_DIST_DIR)) {
     app.use('/steel-qc', express.static(STEEL_QC_DIST_DIR));
@@ -199,8 +382,6 @@ app.get('/bigscreen/centermap', (req, res) => {
 // 托管前端静态文件
 app.use(express.static(path.join(__dirname, '../dist')));
 
-const DATA_FILE = path.join(__dirname, 'data.json');
-
 const getUserRole = (req) => {
     const raw = req.headers['x-user-role'];
     const role = Array.isArray(raw) ? raw[0] : raw;
@@ -214,42 +395,6 @@ const requireRole = (allowedRoles) => (req, res, next) => {
     return res.status(403).json({ success: false, message: '无权限' });
 };
 
-const readDataFile = () => {
-    try {
-        if (!fs.existsSync(DATA_FILE)) return {};
-        const content = fs.readFileSync(DATA_FILE, 'utf-8');
-        return content ? JSON.parse(content) : {};
-    } catch (e) {
-        return {};
-    }
-};
-
-const writeDataFile = (data) => {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data || {}, null, 2));
-};
-
-// 初始化数据
-if (!fs.existsSync(DATA_FILE)) {
-    const initialData = {
-        star: {
-            groupName: '一班组',
-            passingRate: 98,
-            firstPassRate: 95,
-            photoUrl: '/people.jpg'
-        },
-        ranking: [
-            { name: '第1组', value: 99.2 },
-            { name: '第2组', value: 98.5 },
-            { name: '第3组', value: 97.8 },
-            { name: '第4组', value: 96.5 },
-            { name: '第5组', value: 95.2 },
-            { name: '第6组', value: 94.0 }
-        ],
-        workshopFirstPassRate: 97.5
-    };
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2));
-}
-
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, path.join(__dirname, 'uploads/'));
@@ -262,6 +407,22 @@ const storage = multer.diskStorage({
 const upload = multer({ 
     storage,
     limits: { fileSize: 50 * 1024 * 1024 }, // Limit file size to 50MB
+});
+
+const banzuStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        ensureDir(BANZU_DIR);
+        cb(null, BANZU_DIR);
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname || '') || '.jpg';
+        cb(null, `__upload_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`);
+    }
+});
+
+const banzuUpload = multer({
+    storage: banzuStorage,
+    limits: { fileSize: 50 * 1024 * 1024 },
 });
 
 const ifcStorage = multer.diskStorage({
@@ -299,10 +460,56 @@ const uploadMiddleware = (req, res, next) => {
     });
 };
 
-// 获取所有数据
-app.get('/api/all-data', (req, res) => {
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-    res.json(data);
+const banzuUploadMiddleware = (req, res, next) => {
+    banzuUpload.single('photo')(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+            console.error('Banzu multer error:', err);
+            return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+        } else if (err) {
+            console.error('Unknown banzu upload error:', err);
+            return res.status(500).json({ success: false, message: `Server error: ${err.message}` });
+        }
+        next();
+    });
+};
+
+// 获取汇总数据（测试阶段默认走 PostgreSQL，无数据时返回空结构）
+app.get('/api/all-data', async (req, res) => {
+    try {
+        const [starRes, rankingRes, workshopRateRes] = await Promise.all([
+            dbApi.data.getStar(),
+            dbApi.data.getRankings(),
+            dbApi.data.getSetting('workshopFirstPassRate')
+        ]);
+
+        const star = starRes && starRes.success && starRes.data ? starRes.data : null;
+        const rankings = rankingRes && rankingRes.success && Array.isArray(rankingRes.data) ? rankingRes.data : [];
+        const workshopRate = workshopRateRes && workshopRateRes.success && workshopRateRes.data
+            ? Number(workshopRateRes.data.value || 0)
+            : 0;
+
+        res.json({
+            star: {
+                groupId: star && star.group_id ? star.group_id : '',
+                groupName: star && star.group_name ? star.group_name : '一班组',
+                passingRate: star && star.passing_rate != null ? Number(star.passing_rate) : 0,
+                firstPassRate: star && star.first_pass_rate != null ? Number(star.first_pass_rate) : 0,
+                photoUrl: star && star.photo_url ? star.photo_url : '/people.jpg'
+            },
+            ranking: rankings.map((item) => ({
+                id: item.id,
+                groupId: item.group_id || '',
+                name: item.group_name || '',
+                value: item.qualified_rate != null ? Number(item.qualified_rate) : 0,
+                totalCount: item.total_count != null ? Number(item.total_count) : 0,
+                qualifiedCount: item.qualified_count != null ? Number(item.qualified_count) : 0,
+                period: item.period || ''
+            })),
+            workshopFirstPassRate: workshopRate
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
 const parseQcTemplate = (filePath) => {
@@ -507,6 +714,38 @@ const findCol = (row, predicate) => {
 
 const safeCellText = (v) => (v == null ? '' : String(v).trim());
 
+const mapComponentDetailPayload = (component) => {
+    if (!component) return null;
+    return {
+        id: component.id || '',
+        name: component.name || '',
+        componentMark: component.componentMark || component.component_mark || '',
+        spec: component.spec || '',
+        positionCode: component.positionCode || component.position_code || '',
+        bottomElevation: component.bottomElevation || component.bottom_elevation || '',
+        topElevation: component.topElevation || component.top_elevation || '',
+        length: component.length != null ? Number(component.length) : (component.length_value != null ? Number(component.length_value) : null),
+        width: component.width != null ? Number(component.width) : (component.width_value != null ? Number(component.width_value) : null),
+        area: component.area != null ? Number(component.area) : (component.area_value != null ? Number(component.area_value) : null),
+        castUnitWeight: component.castUnitWeight != null ? Number(component.castUnitWeight) : (component.cast_unit_weight != null ? Number(component.cast_unit_weight) : null),
+        weightNet: component.weightNet != null ? Number(component.weightNet) : (component.weight_net != null ? Number(component.weight_net) : null),
+        weightGross: component.weightGross != null ? Number(component.weightGross) : (component.weight_gross != null ? Number(component.weight_gross) : null),
+        material: component.material || '',
+        mainReference: component.mainReference || component.main_reference || '',
+        mainSpec: component.spec || '',
+        teamId: component.teamId || component.team_id || '',
+        teamName: component.teamName || component.team_name || '',
+        teamLeader: component.teamLeader || component.team_leader || '',
+        qualityInspector: component.qualityInspector || component.quality_inspector || '',
+        qualityManager: component.qualityManager || component.quality_manager || '',
+        planDate: component.planDate || component.plan_date || '',
+        status: component.status || '待检测',
+        ifcElementId: component.ifcElementId || component.ifc_element_id || '',
+        ifcGlobalId: component.ifcGlobalId || component.ifc_global_id || '',
+        ifcType: component.ifcType || component.ifc_type || ''
+    };
+};
+
 app.get('/api/qc-templates/:id/download', (req, res) => {
     try {
         const fullPath = resolveQcTemplatePath(req.params.id);
@@ -518,213 +757,6 @@ app.get('/api/qc-templates/:id/download', (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
         return res.sendFile(fullPath);
     } catch (e) {
-        return res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-app.post('/api/qc-templates/:id/export', requireRole(['admin']), async (req, res) => {
-    try {
-        const fullPath = resolveQcTemplatePath(req.params.id);
-        if (!fullPath) {
-            return res.status(404).json({ success: false, message: 'Template not found' });
-        }
-
-        const componentNo = safeCellText(req.body && req.body.componentNo);
-        const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : [];
-        const meta = (req.body && req.body.meta) || {};
-        const groupName = safeCellText(meta.groupName);
-        const selfInspectorName = safeCellText(meta.selfInspectorName);
-        const teamLeaderName = safeCellText(meta.teamLeaderName);
-        const qualityInspectorName = safeCellText(meta.qualityInspectorName);
-
-        const wb = new ExcelJS.Workbook();
-        await wb.xlsx.readFile(fullPath);
-        const ws = wb.worksheets[0];
-        if (!ws) return res.status(400).json({ success: false, message: 'No worksheet found' });
-
-        const getCellText = (row, col) => {
-            const cell = ws.getCell(row, col);
-            if (!cell || cell.value == null) return '';
-            if (typeof cell.value === 'object' && cell.value.richText) {
-                return cell.value.richText.map(r => r.text || '').join('').trim();
-            }
-            return String(cell.value).trim();
-        };
-
-        const rowCount = ws.rowCount;
-        const colCount = ws.columnCount;
-
-        const buildRowTexts = (rowNum) => {
-            const texts = [];
-            for (let c = 1; c <= colCount; c++) {
-                texts.push(getCellText(rowNum, c).replace(/\s+/g, ''));
-            }
-            return texts;
-        };
-
-        let headerRow = -1;
-        for (let r = 1; r <= Math.min(rowCount, 30); r++) {
-            const texts = buildRowTexts(r);
-            const joined = texts.join('');
-            if (joined.includes('序号') && joined.includes('项目') && joined.includes('允许偏差')) {
-                headerRow = r;
-                break;
-            }
-        }
-        if (headerRow === -1) {
-            return res.status(400).json({ success: false, message: 'Template header not found' });
-        }
-
-        const headerTexts = buildRowTexts(headerRow);
-        const subHeaderTexts = buildRowTexts(headerRow + 1);
-
-        const findColIdx = (texts, pred) => {
-            for (let i = 0; i < texts.length; i++) {
-                if (pred(texts[i])) return i + 1;
-            }
-            return -1;
-        };
-
-        const seqCol = findColIdx(headerTexts, t => t.includes('序号'));
-        const designCol = findColIdx(headerTexts, t => t.includes('设计') && t.includes('尺寸'));
-        const remarkCol = findColIdx(headerTexts, t => t.includes('备注'));
-        const selfCheckCol = findColIdx(subHeaderTexts, t => t.includes('自检'));
-        const groupCheckCol = findColIdx(subHeaderTexts, t => t.includes('班组') || t.includes('班组长'));
-
-        const bySeq = new Map();
-        rows.forEach(r => {
-            const seq = Number(r && r.seq);
-            if (!Number.isNaN(seq) && seq > 0) bySeq.set(seq, r);
-        });
-
-        const setVal = (row, col, val) => {
-            if (col < 1 || row < 1) return;
-            const cell = ws.getCell(row, col);
-            cell.value = val == null ? '' : val;
-        };
-
-        for (let r = headerRow + 2; r <= rowCount; r++) {
-            const seqText = getCellText(r, seqCol > 0 ? seqCol : 1);
-            if (!/^[0-9]+$/.test(seqText)) continue;
-            const seq = Number(seqText);
-            const payload = bySeq.get(seq);
-            if (!payload) continue;
-
-            const designValue = payload.designValue == null || payload.designValue === '' ? '' : Number(payload.designValue);
-            const measuredValue = payload.measuredValue == null || payload.measuredValue === '' ? '' : Number(payload.measuredValue);
-            const deviation = payload.deviation == null || payload.deviation === '' ? '' : Number(payload.deviation);
-            const verdict = safeCellText(payload.verdict);
-
-            if (designCol > 0 && designValue !== '' && !Number.isNaN(designValue)) setVal(r, designCol, designValue);
-            if (selfCheckCol > 0 && measuredValue !== '' && !Number.isNaN(measuredValue)) setVal(r, selfCheckCol, measuredValue);
-            if (groupCheckCol > 0 && safeCellText(payload.groupMeasuredValue) !== '') {
-                const gv = Number(payload.groupMeasuredValue);
-                if (!Number.isNaN(gv)) setVal(r, groupCheckCol, gv);
-            }
-            if (remarkCol > 0) {
-                const parts = [];
-                if (deviation !== '' && !Number.isNaN(deviation)) parts.push(`偏差:${deviation > 0 ? '+' : ''}${deviation}`);
-                if (verdict) parts.push(`判定:${verdict}`);
-                if (componentNo) parts.push(`构件:${componentNo}`);
-                if (parts.length) setVal(r, remarkCol, parts.join('  '));
-            }
-        }
-
-        const applyNameToText = (text, label, name) => {
-            if (!name) return text;
-            const s = String(text);
-            if (s.includes(`${label}：${name}`) || s.includes(`${label}:${name}`)) return s;
-            const re = new RegExp(`${label}\\s*([：:])\\s*`, 'g');
-            return s.replace(re, (m, colon) => `${label}${colon}${name} `);
-        };
-
-        const pickYearTail = (text) => {
-            const s = String(text);
-            const idx = s.indexOf('年');
-            return idx === -1 ? '' : s.slice(idx).trim();
-        };
-
-        ws.eachRow((row, rowNum) => {
-            row.eachCell((cell, colNum) => {
-                let val = cell.value;
-                if (val && typeof val === 'object' && val.richText) {
-                    val = val.richText.map(r => r.text || '').join('');
-                }
-                if (typeof val !== 'string' || !val.trim()) return;
-                let text = val;
-                const compact = text.replace(/\s+/g, '');
-
-                if (selfInspectorName && teamLeaderName) {
-                    if (compact.includes('自检员：') && compact.includes('班组长：')) {
-                        const tail = pickYearTail(text);
-                        const suffix = tail ? `  ${tail}` : '  年    月    日';
-                        cell.value = `自检员：${selfInspectorName}    班组长：${teamLeaderName}${suffix}`;
-                        return;
-                    }
-                }
-
-                if (qualityInspectorName) {
-                    const labels = ['质量检查员', '质量检测员', '质检员'];
-                    const found = labels.find(l => compact.includes(l));
-                    if (found && !compact.includes(`${found}：${qualityInspectorName}`)) {
-                        const tail = pickYearTail(text);
-                        const suffix = tail ? `  ${tail}` : '  年    月    日';
-                        cell.value = `${found}：${qualityInspectorName}${suffix}`;
-                        return;
-                    }
-                }
-
-                let updated = text;
-                updated = applyNameToText(updated, '自检员', selfInspectorName);
-                updated = applyNameToText(updated, '班组长', teamLeaderName);
-                updated = applyNameToText(updated, '质检员', qualityInspectorName);
-                updated = applyNameToText(updated, '质量检查员', qualityInspectorName);
-                updated = applyNameToText(updated, '质量检测员', qualityInspectorName);
-                if (updated !== text) { cell.value = updated; return; }
-
-                const trimmed = text.trim();
-                const nameLabels = [
-                    { label: '自检员', name: selfInspectorName },
-                    { label: '班组长', name: teamLeaderName },
-                    { label: '质检员', name: qualityInspectorName },
-                    { label: '质量检查员', name: qualityInspectorName },
-                    { label: '质量检测员', name: qualityInspectorName }
-                ];
-                const match = nameLabels.find(x => x.name && trimmed === x.label);
-                if (match) {
-                    const rightCell = ws.getCell(rowNum, colNum + 1);
-                    const rightEmpty = !rightCell.value || String(rightCell.value).trim() === '';
-                    if (rightEmpty) {
-                        rightCell.value = match.name;
-                    } else {
-                        cell.value = `${match.label}：${match.name}`;
-                    }
-                    return;
-                }
-
-                if (groupName) {
-                    const groupLabels = ['加工班组', '施工班组', '班组'];
-                    const gMatch = groupLabels.find(l => compact === l || compact.includes(l));
-                    if (gMatch && !compact.includes('班组长')) {
-                        const rightCell = ws.getCell(rowNum, colNum + 1);
-                        const rightEmpty = !rightCell.value || String(rightCell.value).trim() === '';
-                        if (rightEmpty) {
-                            rightCell.value = groupName;
-                        } else {
-                            cell.value = `${gMatch}：${groupName}`;
-                        }
-                    }
-                }
-            });
-        });
-
-        const buffer = await wb.xlsx.writeBuffer();
-        const baseName = componentNo ? `${componentNo}_${path.basename(fullPath)}` : path.basename(fullPath);
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(baseName)}`);
-        return res.send(Buffer.from(buffer));
-    } catch (e) {
-        console.error('POST /api/qc-templates/:id/export error:', e);
         return res.status(500).json({ success: false, message: e.message });
     }
 });
@@ -941,69 +973,116 @@ app.get('/api/ifc/element', async (req, res) => {
 });
 
 // 获取标兵信息
-app.get('/api/star', (req, res) => {
+app.get('/api/star', async (req, res) => {
     try {
-        const data = readDataFile();
-        res.json(data.star || data);
+        const summaryRes = await buildComponentDrivenTeamSummary(req.query.projectId || null);
+        if (summaryRes.success && summaryRes.data && summaryRes.data.star) {
+            const star = summaryRes.data.star;
+            return res.json({
+                groupId: star.groupId || '',
+                groupName: star.groupName || '未分配班组',
+                passingRate: Number(star.qualifiedRate || 0),
+                firstPassRate: Number(summaryRes.data.workshopFirstPassRate || 0),
+                photoUrl: star.photoUrl || '/people.jpg',
+                teamLeader: star.teamLeader || '',
+                qualityInspector: star.qualityInspector || '',
+                qualityManager: star.qualityManager || '',
+                componentCount: Number(star.componentCount || 0)
+            });
+        }
+
+        const starRes = await dbApi.data.getStar();
+        const star = starRes && starRes.success && starRes.data ? starRes.data : null;
+        res.json({
+            groupId: star && star.group_id ? star.group_id : '',
+            groupName: star && star.group_name ? star.group_name : '一班组',
+            passingRate: star && star.passing_rate != null ? Number(star.passing_rate) : 98,
+            firstPassRate: star && star.first_pass_rate != null ? Number(star.first_pass_rate) : 95,
+            photoUrl: star && star.photo_url ? star.photo_url : '/people.jpg'
+        });
     } catch (e) {
         res.status(500).json({ success: false, message: e.message });
     }
 });
 
 // 更新标兵信息
-app.post('/api/star', requireRole(['admin', 'operator']), uploadMiddleware, (req, res) => {
-    console.log('POST /api/star received');
-    console.log('Body:', req.body);
-    console.log('File:', req.file);
-
+app.post('/api/star', requireRole(['admin', 'operator']), banzuUploadMiddleware, async (req, res) => {
     try {
-        // 如果文件不存在，创建空数据
-        if (!fs.existsSync(DATA_FILE)) {
-            const initialData = {
-                star: {
-                    groupName: '一班组',
-                    passingRate: 98,
-                    firstPassRate: 95,
-                    photoUrl: '/people.jpg'
-                },
-                ranking: [],
-                workshopFirstPassRate: 97.5
-            };
-            fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2));
+        const currentStarRes = await dbApi.data.getStar();
+        const currentStar = currentStarRes && currentStarRes.success && currentStarRes.data ? currentStarRes.data : null;
+        const groupsRes = await dbApi.data.getAllGroups();
+        const groups = groupsRes && groupsRes.success && Array.isArray(groupsRes.data) ? groupsRes.data : [];
+        const rawGroupName = req.body.groupName;
+        const rawPhotoUrl = req.body.photoUrl;
+        const groupName = rawGroupName && rawGroupName !== 'undefined' && rawGroupName !== 'null'
+            ? String(rawGroupName).trim()
+            : (currentStar && currentStar.group_name ? currentStar.group_name : '一班组');
+        const group = groups.find((g) => String(g.name).trim() === groupName);
+
+        let photoUrl = currentStar && currentStar.photo_url ? currentStar.photo_url : '/people.jpg';
+        if (req.file) {
+            photoUrl = finalizeBanzuUpload(req.file, groupName);
+        } else if (rawPhotoUrl && rawPhotoUrl !== 'undefined' && rawPhotoUrl !== 'null') {
+            photoUrl = String(rawPhotoUrl).trim();
+        } else if (group && group.photo_url) {
+            photoUrl = group.photo_url;
         }
 
-        const dataContent = fs.readFileSync(DATA_FILE, 'utf-8');
-        const data = dataContent ? JSON.parse(dataContent) : {};
-        
-        let star = data.star || {
-            groupName: '一班组',
-            passingRate: 98,
-            firstPassRate: 95,
-            photoUrl: '/people.jpg'
-        };
-        
-        // 确保使用正确的值更新，处理 undefined 和 null
-        if (req.body.groupName && req.body.groupName !== 'undefined' && req.body.groupName !== 'null') {
-            star.groupName = req.body.groupName;
-        }
-        
-        if (req.body.passingRate && req.body.passingRate !== 'undefined' && req.body.passingRate !== 'null') {
+        let passingRate = currentStar && currentStar.passing_rate != null ? Number(currentStar.passing_rate) : 98;
+        if (req.body.passingRate != null && req.body.passingRate !== 'undefined' && req.body.passingRate !== 'null') {
             const rate = Number(req.body.passingRate);
-            if (!isNaN(rate)) {
-                star.passingRate = rate;
+            if (!Number.isNaN(rate)) {
+                passingRate = rate;
             }
         }
 
-        if (req.file) {
-            // 使用相对路径，让前端根据当前域名自动拼接
-            star.photoUrl = `/uploads/${req.file.filename}`;
-        } else if (req.body.photoUrl && req.body.photoUrl !== 'undefined' && req.body.photoUrl !== 'null') {
-            star.photoUrl = req.body.photoUrl;
-        }
+        const updateStarRes = await dbApi.data.updateStar({
+            group_name: groupName,
+            group_id: group ? group.id : (currentStar && currentStar.group_id ? currentStar.group_id : null),
+            photo_url: photoUrl,
+            passing_rate: passingRate,
+            first_pass_rate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 95,
+            photo_updated_at: new Date().toISOString()
+        });
+        if (!updateStarRes.success) throw new Error(updateStarRes.error || '更新标兵失败');
 
-        data.star = star;
-        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-        res.json({ success: true, data: star });
+        const period = new Date().toISOString().substring(0, 7);
+        const rankingRes = await dbApi.data.getRankings(period);
+        const rankingRows = rankingRes && rankingRes.success && Array.isArray(rankingRes.data) ? rankingRes.data : [];
+        const ranking = rankingRows.map((row) => ({
+            group_id: row.group_id || null,
+            group_name: row.group_name || '',
+            qualified_rate: row.qualified_rate != null ? Number(row.qualified_rate) : 0
+        }));
+        const existingIndex = ranking.findIndex((item) => String(item.group_name).trim() === groupName);
+        if (existingIndex >= 0) {
+            ranking[existingIndex] = {
+                ...ranking[existingIndex],
+                group_id: group ? group.id : ranking[existingIndex].group_id,
+                group_name: groupName,
+                qualified_rate: passingRate
+            };
+        } else {
+            ranking.push({
+                group_id: group ? group.id : null,
+                group_name: groupName,
+                qualified_rate: passingRate
+            });
+        }
+        ranking.sort((a, b) => Number(b.qualified_rate || 0) - Number(a.qualified_rate || 0));
+        const rankingUpdateRes = await dbApi.data.updateRankingsByPeriod(period, ranking);
+        if (!rankingUpdateRes.success) throw new Error(rankingUpdateRes.error || '更新排名失败');
+
+        res.json({
+            success: true,
+            data: {
+                groupId: group ? group.id : '',
+                groupName,
+                passingRate,
+                firstPassRate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 95,
+                photoUrl
+            }
+        });
     } catch (error) {
         console.error('Error in POST /api/star:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -1011,115 +1090,171 @@ app.post('/api/star', requireRole(['admin', 'operator']), uploadMiddleware, (req
 });
 
 // 获取排名信息
-app.get('/api/ranking', (req, res) => {
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-    res.json({
-        success: true,
-        data: data.ranking,
-        workshopFirstPassRate: data.workshopFirstPassRate
-    });
+app.get('/api/ranking', async (req, res) => {
+    try {
+        const summaryRes = await buildComponentDrivenTeamSummary(req.query.projectId || null);
+        if (summaryRes.success && summaryRes.data) {
+            return res.json({
+                success: true,
+                data: (summaryRes.data.ranking || []).map((item) => ({
+                    groupId: item.groupId || '',
+                    name: item.groupName || '',
+                    value: Number(item.qualifiedRate || 0),
+                    teamLeader: item.teamLeader || '',
+                    qualityInspector: item.qualityInspector || '',
+                    qualityManager: item.qualityManager || '',
+                    componentCount: Number(item.componentCount || 0)
+                })),
+                workshopFirstPassRate: Number(summaryRes.data.workshopFirstPassRate || 0)
+            });
+        }
+
+        const rankingRes = await dbApi.data.getRankings();
+        const workshopRateRes = await dbApi.data.getSetting('workshopFirstPassRate');
+        const ranking = rankingRes && rankingRes.success && Array.isArray(rankingRes.data)
+            ? rankingRes.data.map((row) => ({
+                id: row.id,
+                groupId: row.group_id || '',
+                name: row.group_name || '',
+                value: row.qualified_rate != null ? Number(row.qualified_rate) : 0
+            }))
+            : [];
+        const workshopFirstPassRate = workshopRateRes && workshopRateRes.success && workshopRateRes.data
+            ? Number(workshopRateRes.data.value || 0)
+            : 97.5;
+        res.json({ success: true, data: ranking, workshopFirstPassRate });
+    } catch (error) {
+        console.error('Error in GET /api/ranking:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
-app.post('/api/ranking', requireRole(['admin', 'operator']), (req, res) => {
+app.get('/api/projects/:id/team-summary', async (req, res) => {
     try {
-        const data = readDataFile();
+        const summaryRes = await buildComponentDrivenTeamSummary(req.params.id);
+        if (!summaryRes.success) {
+            return res.status(500).json({ success: false, message: summaryRes.error || '获取班组汇总失败' });
+        }
+        res.json({ success: true, data: summaryRes.data });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/ranking', requireRole(['admin', 'operator']), async (req, res) => {
+    try {
         const incoming = req.body && (req.body.ranking || req.body.data || req.body);
-        const ranking = Array.isArray(incoming) ? incoming : [];
-        data.ranking = ranking.map((it) => ({
-            name: it && it.name != null ? String(it.name) : '',
+        const ranking = (Array.isArray(incoming) ? incoming : []).map((it) => ({
+            name: it && it.name != null ? String(it.name).trim() : '',
             value: it && it.value != null ? Number(it.value) : 0
-        }));
+        })).filter((it) => it.name);
+        const groupsRes = await dbApi.data.getAllGroups();
+        const groups = groupsRes && groupsRes.success && Array.isArray(groupsRes.data) ? groupsRes.data : [];
+        const period = new Date().toISOString().substring(0, 7);
+        const normalized = ranking
+            .map((it) => {
+                const group = groups.find((g) => String(g.name).trim() === it.name);
+                return {
+                    group_id: group ? group.id : null,
+                    group_name: it.name,
+                    qualified_rate: Number.isFinite(it.value) ? it.value : 0
+                };
+            })
+            .sort((a, b) => Number(b.qualified_rate || 0) - Number(a.qualified_rate || 0));
+        const updateRankingsRes = await dbApi.data.updateRankingsByPeriod(period, normalized);
+        if (!updateRankingsRes.success) throw new Error(updateRankingsRes.error || '更新排名失败');
         if (req.body && req.body.workshopFirstPassRate != null) {
             const rate = Number(req.body.workshopFirstPassRate);
-            if (!Number.isNaN(rate)) data.workshopFirstPassRate = rate;
+            if (!Number.isNaN(rate)) {
+                const settingRes = await dbApi.data.setSetting('workshopFirstPassRate', String(rate), '车间一次通过率');
+                if (!settingRes.success) throw new Error(settingRes.error || '更新车间一次通过率失败');
+            }
         }
-        writeDataFile(data);
-        res.json({ success: true, data: data.ranking, workshopFirstPassRate: data.workshopFirstPassRate });
+
+        const topOne = normalized[0] || null;
+        const currentStarRes = await dbApi.data.getStar();
+        const currentStar = currentStarRes && currentStarRes.success && currentStarRes.data ? currentStarRes.data : null;
+        if (topOne) {
+            const topGroup = groups.find((g) => g.id === topOne.group_id) || groups.find((g) => String(g.name).trim() === topOne.group_name);
+            const starUpdateRes = await dbApi.data.updateStar({
+                group_name: topOne.group_name,
+                group_id: topGroup ? topGroup.id : null,
+                photo_url: topGroup && topGroup.photo_url ? topGroup.photo_url : (currentStar && currentStar.photo_url ? currentStar.photo_url : '/people.jpg'),
+                passing_rate: Number(topOne.qualified_rate || 0),
+                first_pass_rate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 95,
+                photo_updated_at: currentStar && currentStar.photo_updated_at ? currentStar.photo_updated_at : null
+            });
+            if (!starUpdateRes.success) throw new Error(starUpdateRes.error || '更新标兵失败');
+        }
+
+        const workshopRateRes = await dbApi.data.getSetting('workshopFirstPassRate');
+        res.json({
+            success: true,
+            data: normalized.map((it) => ({ name: it.group_name, value: it.qualified_rate })),
+            workshopFirstPassRate: workshopRateRes && workshopRateRes.success && workshopRateRes.data
+                ? Number(workshopRateRes.data.value || 0)
+                : 97.5
+        });
     } catch (error) {
         console.error('Error in POST /api/ranking:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-app.get('/api/today-plan', (req, res) => {
-    const data = readDataFile();
-    const today = getTodayStr();
-    const { startDate, endDate, projectId } = req.query;
-    const activeId = data.activeProjectId;
-    const projects = data.projects || [];
-
-    function inPlanDateRange(c) {
-        if (startDate && endDate) {
-            return c.planDate >= startDate && c.planDate <= endDate;
+app.get('/api/today-plan', async (req, res) => {
+    try {
+        const today = getTodayStr();
+        const { startDate, endDate, projectId } = req.query;
+        const rowsRes = await dbApi.data.getTodayPlanRows({ startDate, endDate, projectId, today });
+        if (!rowsRes.success) {
+            console.error('GET /api/today-plan query failed:', rowsRes.error || 'unknown error');
+            return res.status(500).json({ success: false, message: rowsRes.error || '获取今日计划失败' });
         }
-        return c.planDate === today;
+        const activeRes = await dbApi.data.getActiveProject();
+        const activeId = activeRes.success && activeRes.data ? activeRes.data.id : null;
+        const planItems = (rowsRes.data || []).map((row) => ({
+            project: row.project_name,
+            projectId: row.project_id,
+            componentId: row.component_id,
+            componentName: row.component_mark || row.component_name,
+            componentMark: row.component_mark || '',
+            spec: row.spec || '',
+            team: row.team_leader || '',
+            teamName: row.team_name || '',
+            inspector: row.quality_inspector || '',
+            manager: row.quality_manager || '',
+            selfInspector: row.self_inspector || '',
+            location: `${row.province || ''}${row.city || ''}`,
+            type: row.ifc_type || (row.component_name || '').split(' ')[0],
+            status: normalizeComponentStatus(row.status),
+            planDate: row.plan_date || '',
+            count: 1,
+            ifcUrl: row.ifc_url || '',
+            ifcElementId: row.ifc_element_id || '',
+            ifcGlobalId: row.ifc_global_id || '',
+            teamId: row.team_id || ''
+        }));
+        res.json({ success: true, data: planItems, activeProjectId: activeId });
+    } catch (error) {
+        console.error('Error in GET /api/today-plan:', error);
+        res.status(500).json({ success: false, message: error.message });
     }
-
-    const sourceProjects = projectId
-        ? projects.filter(p => p.id === projectId)
-        : projects;
-
-    const planItems = [];
-    for (const project of sourceProjects) {
-        const comps = (project.components || []).filter(inPlanDateRange);
-        for (const c of comps) {
-            planItems.push({
-                project: project.name,
-                projectId: project.id,
-                componentId: c.id,
-                componentName: c.componentMark || c.name,
-                componentMark: c.componentMark || '',
-                spec: c.spec,
-                team: c.teamLeader,
-                teamName: c.teamName || '',
-                inspector: c.qualityInspector,
-                manager: c.qualityManager,
-                selfInspector: c.selfInspector || '',
-                location: (project.province || '') + (project.city || ''),
-                type: c.ifcType || (c.name || '').split(' ')[0],
-                status: c.status,
-                planDate: c.planDate,
-                count: 1,
-                ifcUrl: project.ifcUrl || '',
-                ifcElementId: c.ifcElementId || '',
-                ifcGlobalId: c.ifcGlobalId || '',
-                teamId: c.teamId || '',
-            });
-        }
-    }
-
-    planItems.sort((a, b) => {
-        const pa = (a.project || '').localeCompare(b.project || '', 'zh');
-        if (pa !== 0) return pa;
-        return (a.componentName || '').localeCompare(b.componentName || '', 'zh');
-    });
-
-    res.json({ success: true, data: planItems, activeProjectId: activeId });
 });
 
-/** 历史检测记录：来自各项目构件，计划日期早于今天，或状态为已完成/不合格 */
-app.get('/api/inspection-history', (req, res) => {
+/** 历史检测记录：来自各项目构件，计划日期早于今天，或状态为合格/不合格 */
+app.get('/api/inspection-history', async (req, res) => {
     try {
-        const data = readDataFile();
         const today = getTodayStr();
-        const projects = data.projects || [];
-        const rows = [];
-        for (const project of projects) {
-            for (const c of (project.components || [])) {
-                const pd = (c.planDate || '').trim();
-                const st = c.status || '';
-                const isPastPlan = pd && pd < today;
-                const isDone = st === '已完成' || st === '不合格';
-                if (!isPastPlan && !isDone) continue;
-                rows.push({
-                    projectName: project.name || '—',
-                    componentType: c.ifcType || c.type || '—',
-                    componentNumber: c.componentMark || c.name || c.id || '—',
-                    inspectionDate: pd || today,
-                });
-            }
+        const rowsRes = await dbApi.data.getInspectionHistoryRows(today);
+        if (!rowsRes.success) {
+            return res.status(500).json({ success: false, message: rowsRes.error || '获取历史检测记录失败' });
         }
-        rows.sort((a, b) => String(b.inspectionDate).localeCompare(String(a.inspectionDate)));
+        const rows = (rowsRes.data || []).map((row) => ({
+            projectName: row.project_name || '—',
+            componentType: row.ifc_type || '—',
+            componentNumber: row.component_mark || row.component_name || row.component_id || '—',
+            inspectionDate: row.plan_date || today
+        }));
         res.json({ success: true, data: rows });
     } catch (e) {
         console.error('GET /api/inspection-history', e);
@@ -1127,13 +1262,69 @@ app.get('/api/inspection-history', (req, res) => {
     }
 });
 
-app.post('/api/today-plan', requireRole(['admin', 'operator']), (req, res) => {
+app.post('/api/today-plan', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const data = readDataFile();
-        const incoming = req.body && (req.body.todayPlan || req.body.data || req.body.list || req.body);
-        data.todayPlan = Array.isArray(incoming) ? incoming : [];
-        writeDataFile(data);
-        res.json({ success: true, data: data.todayPlan });
+        const incoming = req.body && (req.body.todayPlan || req.body.planItems || req.body.data || req.body.list || req.body);
+        const items = Array.isArray(incoming) ? incoming : [];
+        const grouped = new Map();
+        for (const item of items) {
+            const projectId = String(item.projectId || '');
+            if (!projectId || !item.componentId) continue;
+            if (!grouped.has(projectId)) grouped.set(projectId, []);
+            grouped.get(projectId).push(item);
+        }
+        for (const [projectId, rows] of grouped.entries()) {
+            for (const item of rows) {
+                const updates = {};
+                if (item.teamId !== undefined) updates.team_id = item.teamId || '';
+                if (item.teamName !== undefined) updates.team_name = item.teamName || '';
+                if (item.team !== undefined) updates.team_leader = item.team || '';
+                if (item.teamLeader !== undefined) updates.team_leader = item.teamLeader || '';
+                if (item.selfInspector !== undefined) updates.self_inspector = item.selfInspector || '';
+                if (item.inspector !== undefined) updates.quality_inspector = item.inspector || '';
+                if (item.qualityInspector !== undefined) updates.quality_inspector = item.qualityInspector || '';
+                if (item.manager !== undefined) updates.quality_manager = item.manager || '';
+                if (item.qualityManager !== undefined) updates.quality_manager = item.qualityManager || '';
+                if (item.planDate !== undefined) updates.plan_date = item.planDate || '';
+                if (item.status !== undefined) updates.status = normalizeComponentStatus(item.status);
+                const updateRes = await dbApi.data.updateComponent(item.componentId, updates);
+                if (!updateRes.success) {
+                    return res.status(500).json({ success: false, message: updateRes.error || '保存今日计划失败' });
+                }
+            }
+            const statsRes = await recalcProjectStats(projectId);
+            if (!statsRes.success) {
+                return res.status(500).json({ success: false, message: statsRes.error || '项目统计更新失败' });
+            }
+        }
+        const today = getTodayStr();
+        const rowsRes = await dbApi.data.getTodayPlanRows({ today });
+        if (!rowsRes.success) {
+            return res.status(500).json({ success: false, message: rowsRes.error || '读取今日计划失败' });
+        }
+        const data = (rowsRes.data || []).map((row) => ({
+            project: row.project_name,
+            projectId: row.project_id,
+            componentId: row.component_id,
+            componentName: row.component_mark || row.component_name,
+            componentMark: row.component_mark || '',
+            spec: row.spec || '',
+            team: row.team_leader || '',
+            teamName: row.team_name || '',
+            inspector: row.quality_inspector || '',
+            manager: row.quality_manager || '',
+            selfInspector: row.self_inspector || '',
+            location: `${row.province || ''}${row.city || ''}`,
+            type: row.ifc_type || (row.component_name || '').split(' ')[0],
+            status: normalizeComponentStatus(row.status),
+            planDate: row.plan_date || '',
+            count: 1,
+            ifcUrl: row.ifc_url || '',
+            ifcElementId: row.ifc_element_id || '',
+            ifcGlobalId: row.ifc_global_id || '',
+            teamId: row.team_id || ''
+        }));
+        res.json({ success: true, data });
     } catch (error) {
         console.error('Error in POST /api/today-plan:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -1141,34 +1332,47 @@ app.post('/api/today-plan', requireRole(['admin', 'operator']), (req, res) => {
 });
 
 // 获取班组列表
-app.get('/api/groups', (req, res) => {
+app.get('/api/groups', async (req, res) => {
     try {
-        const data = readDataFile();
-        res.json(data.groups || []);
+        const result = await dbApi.data.getAllGroups();
+        if (!result.success) throw new Error(result.error || '获取班组失败');
+        res.json((result.data || []).map((g) => ({
+            id: g.id,
+            name: g.name,
+            photoUrl: g.photo_url || '/people.jpg'
+        })));
     } catch (e) {
         res.status(500).json({ success: false, message: e.message });
     }
 });
 
 // 添加班组
-app.post('/api/groups', requireRole(['admin', 'operator']), uploadMiddleware, (req, res) => {
+app.post('/api/groups', requireRole(['admin', 'operator']), banzuUploadMiddleware, async (req, res) => {
     try {
-        const dataContent = fs.readFileSync(DATA_FILE, 'utf-8');
-        const data = dataContent ? JSON.parse(dataContent) : {};
-        
-        if (!data.groups) {
-            data.groups = [];
+        const name = req.body && req.body.name ? String(req.body.name).trim() : '';
+        if (!name) {
+            return res.status(400).json({ success: false, message: '班组名称不能为空' });
         }
-
+        const photoUrl = req.file
+            ? finalizeBanzuUpload(req.file, name)
+            : (req.body && req.body.photoUrl ? String(req.body.photoUrl).trim() : `/banzu/${encodeURIComponent(`${name}.jpg`)}`);
         const newGroup = {
             id: Date.now().toString(),
-            name: req.body.name,
-            photoUrl: req.file ? `/uploads/${req.file.filename}` : '/people.jpg'
+            name,
+            photo_url: photoUrl || '/people.jpg'
         };
-
-        data.groups.push(newGroup);
-        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-        res.json({ success: true, data: data.groups });
+        const createRes = await dbApi.data.createGroup(newGroup);
+        if (!createRes.success) throw new Error(createRes.error || '新增班组失败');
+        const listRes = await dbApi.data.getAllGroups();
+        if (!listRes.success) throw new Error(listRes.error || '获取班组失败');
+        res.json({
+            success: true,
+            data: (listRes.data || []).map((g) => ({
+                id: g.id,
+                name: g.name,
+                photoUrl: g.photo_url || '/people.jpg'
+            }))
+        });
     } catch (error) {
         console.error('Error in POST /api/groups:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -1176,17 +1380,20 @@ app.post('/api/groups', requireRole(['admin', 'operator']), uploadMiddleware, (r
 });
 
 // 删除班组
-app.delete('/api/groups/:id', requireRole(['admin', 'operator']), (req, res) => {
+app.delete('/api/groups/:id', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const dataContent = fs.readFileSync(DATA_FILE, 'utf-8');
-        const data = dataContent ? JSON.parse(dataContent) : {};
-
-        if (data.groups) {
-            data.groups = data.groups.filter(g => g.id !== req.params.id);
-            fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-        }
-
-        res.json({ success: true, data: data.groups || [] });
+        const delRes = await dbApi.data.deleteGroup(req.params.id);
+        if (!delRes.success) throw new Error(delRes.error || '删除班组失败');
+        const listRes = await dbApi.data.getAllGroups();
+        if (!listRes.success) throw new Error(listRes.error || '获取班组失败');
+        res.json({
+            success: true,
+            data: (listRes.data || []).map((g) => ({
+                id: g.id,
+                name: g.name,
+                photoUrl: g.photo_url || '/people.jpg'
+            }))
+        });
     } catch (error) {
         console.error('Error in DELETE /api/groups:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -1194,32 +1401,31 @@ app.delete('/api/groups/:id', requireRole(['admin', 'operator']), (req, res) => 
 });
 
 // 更新班组
-app.put('/api/groups/:id', requireRole(['admin', 'operator']), uploadMiddleware, (req, res) => {
+app.put('/api/groups/:id', requireRole(['admin', 'operator']), banzuUploadMiddleware, async (req, res) => {
     try {
-        const dataContent = fs.readFileSync(DATA_FILE, 'utf-8');
-        const data = dataContent ? JSON.parse(dataContent) : {};
-
-        if (!data.groups) {
-            data.groups = [];
-        }
-
-        const groupIndex = data.groups.findIndex(g => g.id === req.params.id);
-        if (groupIndex === -1) {
+        const currentRes = await dbApi.data.getAllGroups();
+        if (!currentRes.success) throw new Error(currentRes.error || '获取班组失败');
+        const current = (currentRes.data || []).find((g) => String(g.id) === String(req.params.id));
+        if (!current) {
             return res.status(404).json({ success: false, message: '班组不存在' });
         }
-
-        // 更新班组信息
-        if (req.body.name) {
-            data.groups[groupIndex].name = req.body.name;
-        }
-        if (req.file) {
-            data.groups[groupIndex].photoUrl = `/uploads/${req.file.filename}`;
-        } else if (req.body.photoUrl) {
-            data.groups[groupIndex].photoUrl = req.body.photoUrl;
-        }
-
-        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-        res.json({ success: true, data: data.groups[groupIndex] });
+        const updates = {};
+        if (req.body.name) updates.name = String(req.body.name).trim();
+        if (req.file) updates.photo_url = finalizeBanzuUpload(req.file, updates.name || current.name);
+        else if (req.body.photoUrl) updates.photo_url = String(req.body.photoUrl).trim();
+        const updateRes = await dbApi.data.updateGroup(req.params.id, updates);
+        if (!updateRes.success) throw new Error(updateRes.error || '更新班组失败');
+        const refreshedRes = await dbApi.data.getAllGroups();
+        if (!refreshedRes.success) throw new Error(refreshedRes.error || '获取班组失败');
+        const refreshed = (refreshedRes.data || []).find((g) => String(g.id) === String(req.params.id));
+        res.json({
+            success: true,
+            data: refreshed ? {
+                id: refreshed.id,
+                name: refreshed.name,
+                photoUrl: refreshed.photo_url || '/people.jpg'
+            } : null
+        });
     } catch (error) {
         console.error('Error in PUT /api/groups:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -1236,42 +1442,231 @@ function getTomorrowStr() {
     return d.toISOString().split('T')[0];
 }
 function genId() { return 'p' + Date.now(); }
-function genCompId() { return 'GJ-' + Date.now(); }
+function genCompId() { return `GJ-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
+
+function mapDbComponentToApi(component) {
+    if (!component) return null;
+    return {
+        id: component.id,
+        name: component.name || '',
+        componentMark: component.componentMark || component.component_mark || '',
+        spec: component.spec || '',
+        teamId: component.teamId || component.team_id || '',
+        teamName: component.teamName || component.team_name || '',
+        teamLeader: component.teamLeader || component.team_leader || '',
+        selfInspector: component.selfInspector || component.self_inspector || '',
+        qualityInspector: component.qualityInspector || component.quality_inspector || '',
+        qualityManager: component.qualityManager || component.quality_manager || '',
+        planDate: component.planDate || component.plan_date || '',
+        status: normalizeComponentStatus(component.status),
+        ifcElementId: component.ifcElementId || component.ifc_element_id || '',
+        ifcGlobalId: component.ifcGlobalId || component.ifc_global_id || '',
+        ifcType: component.ifcType || component.ifc_type || ''
+    };
+}
+
+async function recalcProjectStats(projectId) {
+    const projectRes = await dbApi.data.getProjectById(projectId);
+    if (!projectRes.success) return projectRes;
+    if (!projectRes.data) {
+        return { success: false, status: 404, error: '项目不存在' };
+    }
+    const componentsRes = await dbApi.data.getComponentsByProject(projectId);
+    if (!componentsRes.success) return componentsRes;
+    const components = (componentsRes.data || []).map(mapDbComponentToApi);
+    const beamColumnCount = components.length;
+    const pendingCount = components.filter((c) => c.status === '待检测').length;
+    const inspectingCount = components.filter((c) => c.status === '检测中').length;
+    const qualifiedCount = components.filter((c) => c.status === '合格').length;
+    const unqualifiedCount = components.filter((c) => c.status === '不合格').length;
+    const inspectedCount = qualifiedCount + unqualifiedCount;
+    const qualifiedRate = inspectedCount > 0 ? `${((qualifiedCount / inspectedCount) * 100).toFixed(1)}%` : '0.0%';
+    const teamCount = new Set(
+        components
+            .map((c) => (c.teamName || c.teamLeader || '').trim())
+            .filter(Boolean)
+    ).size;
+    const updateRes = await dbApi.data.updateProject(projectId, {
+        beam_column_count: beamColumnCount,
+        inspected_count: inspectedCount,
+        qualified_count: qualifiedCount,
+        qualified_rate: qualifiedRate
+    });
+    if (!updateRes.success) return updateRes;
+    if (typeof dbApi.data.upsertProjectStatistics === 'function') {
+        const statsRes = await dbApi.data.upsertProjectStatistics({
+            project_id: projectId,
+            component_count: beamColumnCount,
+            inspected_count: inspectedCount,
+            qualified_count: qualifiedCount,
+            pending_count: pendingCount,
+            inspecting_count: inspectingCount,
+            unqualified_count: unqualifiedCount,
+            qualified_rate: qualifiedRate,
+            team_count: teamCount
+        });
+        if (!statsRes.success) return statsRes;
+    }
+    return {
+        success: true,
+        data: {
+            beamColumnCount,
+            componentCount: beamColumnCount,
+            inspectedCount,
+            qualifiedCount,
+            pendingCount,
+            inspectingCount,
+            unqualifiedCount,
+            qualifiedRate,
+            teamCount
+        }
+    };
+}
+
+async function buildComponentDrivenTeamSummary(projectId = null) {
+    let projectIds = [];
+    if (projectId) {
+        projectIds = [String(projectId)];
+    } else {
+        const activeRes = await dbApi.data.getActiveProject();
+        if (activeRes && activeRes.success && activeRes.data && activeRes.data.id) {
+            projectIds = [String(activeRes.data.id)];
+        } else {
+            const projectsRes = await dbApi.data.getAllProjectsWithComponents();
+            if (!projectsRes.success) {
+                return { success: false, error: projectsRes.error || '获取项目列表失败' };
+            }
+            projectIds = (projectsRes.data || []).map((item) => String(item.id || '')).filter(Boolean);
+        }
+    }
+
+    const groupsRes = await dbApi.data.getAllGroups();
+    const groups = groupsRes && groupsRes.success && Array.isArray(groupsRes.data) ? groupsRes.data : [];
+    const photoByName = new Map(groups.map((group) => [
+        String(group.name || '').trim(),
+        group.photo_url || group.photoUrl || ''
+    ]));
+
+    const teamMap = new Map();
+    let totalQualified = 0;
+    let totalReviewed = 0;
+
+    for (const pid of projectIds) {
+        const componentsRes = await dbApi.data.getComponentsByProject(pid);
+        if (!componentsRes.success) {
+            return { success: false, error: componentsRes.error || '获取构件失败' };
+        }
+        const components = (componentsRes.data || []).map(mapDbComponentToApi);
+        for (const component of components) {
+            const teamName = String(component.teamName || component.teamLeader || '').trim();
+            if (!teamName) continue;
+            if (!teamMap.has(teamName)) {
+                teamMap.set(teamName, {
+                    groupId: String(component.teamId || '').trim(),
+                    groupName: teamName,
+                    photoUrl: photoByName.get(teamName) || '',
+                    teamLeader: String(component.teamLeader || '').trim(),
+                    selfInspector: String(component.selfInspector || '').trim(),
+                    qualityInspector: String(component.qualityInspector || '').trim(),
+                    qualityManager: String(component.qualityManager || '').trim(),
+                    componentCount: 0,
+                    qualifiedCount: 0,
+                    unqualifiedCount: 0,
+                    inspectingCount: 0,
+                    pendingCount: 0,
+                });
+            }
+
+            const bucket = teamMap.get(teamName);
+            bucket.componentCount += 1;
+            if (!bucket.groupId && component.teamId) bucket.groupId = String(component.teamId).trim();
+            if (!bucket.teamLeader && component.teamLeader) bucket.teamLeader = String(component.teamLeader).trim();
+            if (!bucket.selfInspector && component.selfInspector) bucket.selfInspector = String(component.selfInspector).trim();
+            if (!bucket.qualityInspector && component.qualityInspector) bucket.qualityInspector = String(component.qualityInspector).trim();
+            if (!bucket.qualityManager && component.qualityManager) bucket.qualityManager = String(component.qualityManager).trim();
+
+            if (component.status === '合格') {
+                bucket.qualifiedCount += 1;
+                totalQualified += 1;
+                totalReviewed += 1;
+            } else if (component.status === '不合格') {
+                bucket.unqualifiedCount += 1;
+                totalReviewed += 1;
+            } else if (component.status === '检测中') {
+                bucket.inspectingCount += 1;
+            } else {
+                bucket.pendingCount += 1;
+            }
+        }
+    }
+
+    const ranking = Array.from(teamMap.values()).map((item) => {
+        const reviewedCount = item.qualifiedCount + item.unqualifiedCount;
+        const qualifiedRate = reviewedCount > 0 ? Number(((item.qualifiedCount / reviewedCount) * 100).toFixed(1)) : 0;
+        return {
+            ...item,
+            reviewedCount,
+            qualifiedRate,
+        };
+    }).sort((a, b) => {
+        if (b.qualifiedRate !== a.qualifiedRate) return b.qualifiedRate - a.qualifiedRate;
+        if (b.reviewedCount !== a.reviewedCount) return b.reviewedCount - a.reviewedCount;
+        return a.groupName.localeCompare(b.groupName, 'zh-Hans-CN');
+    });
+
+    const star = ranking[0] || null;
+    const workshopFirstPassRate = totalReviewed > 0 ? Number(((totalQualified / totalReviewed) * 100).toFixed(1)) : 0;
+
+    return {
+        success: true,
+        data: {
+            ranking,
+            star,
+            workshopFirstPassRate,
+        }
+    };
+}
 
 // 获取项目列表（带当前激活 ID）
-app.get('/api/projects', (req, res) => {
-    const data = readDataFile();
-    res.json({ success: true, data: data.projects || [], activeProjectId: data.activeProjectId || null });
+app.get('/api/projects', async (req, res) => {
+    const projectsRes = await dbApi.data.getAllProjectsWithComponents();
+    if (!projectsRes.success) {
+        return res.status(500).json({ success: false, message: projectsRes.error || '获取项目列表失败' });
+    }
+    const activeProject = projectsRes.data.find((project) => project.isActive) || projectsRes.data[0] || null;
+    res.json({
+        success: true,
+        data: projectsRes.data,
+        activeProjectId: activeProject ? activeProject.id : null
+    });
 });
 
 // 获取项目详情（含构件列表）
-app.get('/api/projects/:id', (req, res) => {
-    const data = readDataFile();
-    const project = (data.projects || []).find(p => p.id === req.params.id);
-    if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
-    res.json({ success: true, data: project });
+app.get('/api/projects/:id', async (req, res) => {
+    const projectRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+    if (!projectRes.success || !projectRes.data) {
+        return res.status(404).json({ success: false, message: '项目不存在' });
+    }
+    res.json({ success: true, data: projectRes.data });
 });
 
 // 获取项目统计
-app.get('/api/projects/:id/statistics', (req, res) => {
-    const data = readDataFile();
-    const project = (data.projects || []).find(p => p.id === req.params.id);
-    if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
+app.get('/api/projects/:id/statistics', async (req, res) => {
+    const projectRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+    if (!projectRes.success || !projectRes.data) return res.status(404).json({ success: false, message: '项目不存在' });
+    const project = projectRes.data;
     const components = project.components || [];
     const stats = {
         total: components.length,
         pending: components.filter(c => c.status === '待检测').length,
         inspecting: components.filter(c => c.status === '检测中').length,
-        completed: components.filter(c => c.status === '已完成').length,
+        completed: components.filter(c => c.status === '合格').length,
         unqualified: components.filter(c => c.status === '不合格').length,
-        inspected: components.filter(c => c.status === '已完成' || c.status === '检测中').length,
-        qualified: components.filter(c => c.status === '已完成').length,
+        inspected: components.filter(c => c.status === '合格' || c.status === '不合格').length,
+        qualified: components.filter(c => c.status === '合格').length,
         rate: project.inspectedCount > 0 ? ((project.qualifiedCount / project.inspectedCount) * 100).toFixed(1) + '%' : '0.0%',
-        // 按 IFC 类型统计
         byType: {},
-        // 按班组统计
         byTeam: {},
-        // 按计划日期统计
         byPlanDate: {}
     };
     components.forEach(c => {
@@ -1289,346 +1684,567 @@ app.get('/api/projects/:id/statistics', (req, res) => {
     res.json({ success: true, data: stats });
 });
 
-// 批量导入 IFC 构件到项目（从 IFC 解析结果批量创建）
-app.post('/api/projects/:id/components/import-ifc', requireRole(['admin', 'operator']), (req, res) => {
+app.get('/api/projects/:id/statistics-summary', async (req, res) => {
     try {
-        const data = readDataFile();
-        const project = (data.projects || []).find(p => p.id === req.params.id);
-        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
-
-        if (!project.components) project.components = [];
-
-        const { elements = [] } = req.body;
-        let added = 0;
-
-        elements.forEach(el => {
-            // 检查是否已存在相同 ifcElementId 的构件
-            const exists = project.components.some(c => c.ifcElementId === String(el.expressID));
-            if (!exists) {
-                project.components.push({
-                    id: genCompId(),
-                    name: el.name || `构件-${el.expressID}`,
-                    componentMark: el.componentMark || '',
-                    spec: '',
-                    teamId: '',
-                    teamName: '',
-                    teamLeader: '',
-                    selfInspector: '',
-                    qualityInspector: '',
-                    qualityManager: '',
-                    planDate: '',
-                    status: '待检测',
-                    ifcElementId: String(el.expressID),
-                    ifcGlobalId: el.globalId || '',
-                    ifcType: el.type || ''
-                });
-                added++;
+        if (typeof dbApi.data.getProjectStatisticsById !== 'function') {
+            return res.status(501).json({ success: false, message: '统计摘要接口未启用' });
+        }
+        const projectRes = await dbApi.data.getProjectById(req.params.id);
+        if (!projectRes.success) {
+            return res.status(500).json({ success: false, message: projectRes.error || '读取项目失败' });
+        }
+        if (!projectRes.data) {
+            return res.status(404).json({ success: false, message: '项目不存在' });
+        }
+        const summaryRes = await dbApi.data.getProjectStatisticsById(req.params.id);
+        if (!summaryRes.success) {
+            return res.status(500).json({ success: false, message: summaryRes.error || '获取统计摘要失败' });
+        }
+        if (!summaryRes.data) {
+            const rebuildRes = await recalcProjectStats(req.params.id);
+            if (!rebuildRes.success) {
+                return res.status(rebuildRes.status || 500).json({ success: false, message: rebuildRes.error || '统计重建失败' });
             }
-        });
+            const retryRes = await dbApi.data.getProjectStatisticsById(req.params.id);
+            if (!retryRes.success) {
+                return res.status(500).json({ success: false, message: retryRes.error || '获取统计摘要失败' });
+            }
+            return res.json({ success: true, data: retryRes.data || null });
+        }
+        return res.json({ success: true, data: summaryRes.data });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
 
-        project.beamColumnCount = (project.components || []).length;
-        writeDataFile(data);
-        res.json({ success: true, added, total: project.components.length, project });
+app.get('/api/projects/:id/components/detail', async (req, res) => {
+    try {
+        const projectId = String(req.params.id || '');
+        const expressID = req.query.expressID != null ? String(req.query.expressID) : '';
+
+        if (!projectId) {
+            return res.status(400).json({ success: false, message: '缺少项目 ID' });
+        }
+        if (!expressID) {
+            return res.status(400).json({ success: false, message: '缺少 expressID 参数' });
+        }
+
+        let detailRes = null;
+        if (expressID && typeof dbApi.data.getComponentByProjectAndIfcElementId === 'function') {
+            detailRes = await dbApi.data.getComponentByProjectAndIfcElementId(projectId, expressID);
+        }
+
+        if (!detailRes || !detailRes.success) {
+            return res.status(500).json({ success: false, message: (detailRes && detailRes.error) || '查询构件详情失败' });
+        }
+        if (!detailRes.data) {
+            return res.status(404).json({ success: false, message: '未找到构件详情' });
+        }
+
+        return res.json({ success: true, data: mapComponentDetailPayload(detailRes.data) });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/projects/:id/components/marks', async (req, res) => {
+    try {
+        const projectId = String(req.params.id || '');
+        if (!projectId) {
+            return res.status(400).json({ success: false, message: '缺少项目 ID' });
+        }
+        if (typeof dbApi.data.getComponentMarksByProject !== 'function') {
+            return res.status(501).json({ success: false, message: '构件索引接口未启用' });
+        }
+        const marksRes = await dbApi.data.getComponentMarksByProject(projectId);
+        if (!marksRes || !marksRes.success) {
+            return res.status(500).json({ success: false, message: (marksRes && marksRes.error) || '查询构件索引失败' });
+        }
+        const seen = new Set();
+        const items = (Array.isArray(marksRes.data) ? marksRes.data : [])
+            .map((row) => ({
+                expressID: row && row.ifc_element_id != null ? String(row.ifc_element_id) : '',
+                componentMark: row && row.component_mark ? String(row.component_mark) : '',
+                name: row && row.name ? String(row.name) : '',
+                ifcType: row && row.ifc_type ? String(row.ifc_type) : '',
+                material: row && row.material ? String(row.material) : '',
+                spec: row && row.spec ? String(row.spec) : '',
+                mainReference: row && row.main_reference ? String(row.main_reference) : '',
+                positionCode: row && row.position_code ? String(row.position_code) : '',
+                bottomElevation: row && row.bottom_elevation ? String(row.bottom_elevation) : '',
+                topElevation: row && row.top_elevation ? String(row.top_elevation) : '',
+                length: row && row.length_value != null ? Number(row.length_value) : null,
+                width: row && row.width_value != null ? Number(row.width_value) : null,
+                area: row && row.area_value != null ? Number(row.area_value) : null,
+                castUnitWeight: row && row.cast_unit_weight != null ? Number(row.cast_unit_weight) : null,
+                weightNet: row && row.weight_net != null ? Number(row.weight_net) : null,
+                weightGross: row && row.weight_gross != null ? Number(row.weight_gross) : null
+            }))
+            .filter((row) => row.expressID && !seen.has(row.expressID) && seen.add(row.expressID));
+
+        return res.json({ success: true, data: items });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 批量导入 IFC 构件到项目（从 IFC 解析结果批量创建）
+app.post('/api/projects/:id/components/import-ifc', requireRole(['admin', 'operator']), async (req, res) => {
+    try {
+        const result = await importIfcElementsToProject(req.params.id, Array.isArray(req.body.elements) ? req.body.elements : []);
+        if (!result.success) {
+            return res.status(result.status || 500).json({ success: false, message: result.message || '导入 IFC 构件失败' });
+        }
+        res.json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-// 添加项目
-app.post('/api/projects', requireRole(['admin']), (req, res) => {
+app.post('/api/projects/:id/components/sync-ifc', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const data = readDataFile();
-        if (!data.projects) data.projects = [];
-        const { name, province, city, center, ifcUrl, beamColumnCount } = req.body;
+        const projectRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        if (!projectRes.success || !projectRes.data) {
+            return res.status(404).json({ success: false, message: '项目不存在' });
+        }
+
+        const project = projectRes.data;
+        const ifcUrl = String(project.ifcUrl || '').trim();
+        if (!ifcUrl) {
+            return res.status(400).json({ success: false, message: '项目未绑定 IFC 文件' });
+        }
+
+        const storedFilename = path.basename(ifcUrl);
+        const fullPath = path.join(IFC_UPLOAD_DIR, storedFilename);
+        if (!fs.existsSync(fullPath)) {
+            return res.status(404).json({ success: false, message: '项目 IFC 文件不存在' });
+        }
+
+        const parseJobId = createIfcParseJob(fullPath);
+        const startedAt = Date.now();
+        let job = IFC_PARSE_JOBS.get(parseJobId);
+
+        while (job && job.status === 'processing' && Date.now() - startedAt < 10 * 60 * 1000) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            job = IFC_PARSE_JOBS.get(parseJobId);
+        }
+
+        if (!job) {
+            return res.status(500).json({ success: false, message: 'IFC 解析任务丢失' });
+        }
+        if (job.status === 'failed') {
+            return res.status(500).json({ success: false, message: job.error || 'IFC 解析失败' });
+        }
+        if (job.status !== 'done' || !job.parse) {
+            return res.status(500).json({ success: false, message: 'IFC 解析未完成' });
+        }
+
+        const importElements = buildImportElementsFromParse(job.parse);
+        const result = await importIfcElementsToProject(req.params.id, importElements);
+        if (!result.success) {
+            return res.status(result.status || 500).json({ success: false, message: result.message || '同步 IFC 失败' });
+        }
+
+        return res.json({
+            ...result,
+            parseTotal: Number(job.parse.total || 0),
+            parseFromCache: job.parse.fromCache === true
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 添加项目
+app.post('/api/projects', requireRole(['admin']), async (req, res) => {
+    try {
+        const { name, province, city, center, ifcUrl, beamColumnCount, ifcFileName, ifcFileSize } = req.body;
         if (!name) return res.status(400).json({ success: false, message: '项目名称不能为空' });
 
-        const newProject = {
-            id: genId(),
+        const countRes = await dbApi.data.getProjectCount();
+        const projectId = genId();
+        const createRes = await dbApi.data.createProject({
+            id: projectId,
             name,
             province: province || '',
             city: city || '',
-            ifcUrl: ifcUrl || '',
-            beamColumnCount: Number(beamColumnCount) || 0,
-            inspectedCount: 0,
-            qualifiedCount: 0,
-            qualifiedRate: '0.0%',
-            components: []
-        };
-
-        // 如果是第一个项目，自动激活
-        if (data.projects.length === 0) {
-            data.activeProjectId = newProject.id;
+            ifc_url: ifcUrl || '',
+            ifc_filename: ifcFileName || '',
+            ifc_file_size: Number(ifcFileSize) || 0,
+            center_lng: Array.isArray(center) ? Number(center[0]) : null,
+            center_lat: Array.isArray(center) ? Number(center[1]) : null,
+            beam_column_count: Number(beamColumnCount) || 0,
+            inspected_count: 0,
+            qualified_count: 0,
+            qualified_rate: '0.0%',
+            is_active: countRes.success && countRes.data && Number(countRes.data.count) === 0 ? 1 : 0
+        });
+        if (!createRes.success) {
+            return res.status(500).json({ success: false, message: createRes.error || '项目创建失败' });
         }
-
-        data.projects.push(newProject);
-        writeDataFile(data);
-        res.json({ success: true, data: data.projects, activeProjectId: data.activeProjectId });
+        if (countRes.success && countRes.data && Number(countRes.data.count) === 0) {
+            await dbApi.data.setActiveProject(projectId);
+        }
+        const projectsRes = await dbApi.data.getAllProjectsWithComponents();
+        const activeProject = projectsRes.success ? (projectsRes.data.find((project) => project.isActive) || projectsRes.data[0] || null) : null;
+        res.json({
+            success: true,
+            data: projectsRes.success ? projectsRes.data : [],
+            activeProjectId: activeProject ? activeProject.id : null
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // 删除项目
-app.delete('/api/projects/:id', requireRole(['admin']), (req, res) => {
+app.delete('/api/projects/:id', requireRole(['admin']), async (req, res) => {
     try {
-        const data = readDataFile();
-        if (!data.projects) data.projects = [];
-        const before = data.projects.length;
-            data.projects = data.projects.filter(p => p.id !== req.params.id);
-        if (data.projects.length === before) return res.status(404).json({ success: false, message: '项目不存在' });
-
-        if (data.activeProjectId === req.params.id) {
-            data.activeProjectId = data.projects[0] ? data.projects[0].id : null;
+        const targetRes = await dbApi.data.getProjectById(req.params.id);
+        if (!targetRes.success || !targetRes.data) {
+            return res.status(404).json({ success: false, message: '项目不存在' });
         }
-        writeDataFile(data);
-        res.json({ success: true, data: data.projects, activeProjectId: data.activeProjectId });
+        const activeRes = await dbApi.data.getActiveProject();
+        const deleteRes = await dbApi.data.deleteProject(req.params.id);
+        if (!deleteRes.success) {
+            return res.status(500).json({ success: false, message: deleteRes.error || '删除项目失败' });
+        }
+        const projectsRes = await dbApi.data.getAllProjectsWithComponents();
+        const nextActive = projectsRes.success ? (projectsRes.data[0] || null) : null;
+        if (activeRes.success && activeRes.data && String(activeRes.data.id) === String(req.params.id)) {
+            await dbApi.data.setActiveProject(nextActive ? nextActive.id : null);
+        }
+        res.json({
+            success: true,
+            data: projectsRes.success ? projectsRes.data : [],
+            activeProjectId: nextActive ? nextActive.id : null
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // 设为当前检测项目
-app.post('/api/projects/:id/active', requireRole(['admin']), (req, res) => {
-    try {
-        const data = readDataFile();
-        const project = (data.projects || []).find(p => p.id === req.params.id);
-        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
-        data.activeProjectId = project.id;
-        writeDataFile(data);
-        res.json({ success: true, activeProjectId: project.id, project });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+app.post('/api/projects/:id/active', requireRole(['admin']), async (req, res) => {
+    const projectRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+    if (!projectRes.success || !projectRes.data) {
+        return res.status(404).json({ success: false, message: '项目不存在' });
     }
+    const activeRes = await dbApi.data.setActiveProject(req.params.id);
+    if (!activeRes.success) {
+        return res.status(500).json({ success: false, message: activeRes.error || '设置当前项目失败' });
+    }
+    res.json({ success: true, activeProjectId: req.params.id, project: projectRes.data });
 });
 
 // 获取当前激活项目
-app.get('/api/active-project', (req, res) => {
-    const data = readDataFile();
-    const project = (data.projects || []).find(p => p.id === data.activeProjectId) || (data.projects || [])[0];
-    res.json({ success: true, data: project || null });
+app.get('/api/active-project', async (req, res) => {
+    const activeRes = await dbApi.data.getActiveProject();
+    if (activeRes.success && activeRes.data && activeRes.data.id) {
+        const projectRes = await dbApi.data.getProjectWithComponentsById(activeRes.data.id);
+        if (projectRes.success && projectRes.data) {
+            return res.json({ success: true, data: projectRes.data });
+        }
+    }
+    const projectsRes = await dbApi.data.getAllProjectsWithComponents();
+    if (!projectsRes.success) {
+        return res.status(500).json({ success: false, message: projectsRes.error || '获取当前项目失败' });
+    }
+    res.json({ success: true, data: projectsRes.data[0] || null });
 });
 
 // 批量更新构件
-app.put('/api/projects/:id/components', requireRole(['admin', 'operator']), (req, res) => {
+app.put('/api/projects/:id/components', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const data = readDataFile();
-        const project = (data.projects || []).find(p => p.id === req.params.id);
-        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
+        const projectRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        if (!projectRes.success || !projectRes.data) return res.status(404).json({ success: false, message: '项目不存在' });
 
         const { batch, components } = req.body;
 
         if (batch && Array.isArray(batch.ids)) {
-            batch.ids.forEach(cid => {
-                const comp = (project.components || []).find(c => c.id === cid);
-                if (comp) {
-                    if (batch.teamId !== undefined) comp.teamId = batch.teamId;
-                    if (batch.teamName !== undefined) comp.teamName = batch.teamName;
-                    if (batch.teamLeader !== undefined) comp.teamLeader = batch.teamLeader;
-                    if (batch.selfInspector !== undefined) comp.selfInspector = batch.selfInspector;
-                    if (batch.qualityInspector !== undefined) comp.qualityInspector = batch.qualityInspector;
-                    if (batch.qualityManager !== undefined) comp.qualityManager = batch.qualityManager;
-                    if (batch.planDate !== undefined) comp.planDate = batch.planDate;
-                    if (batch.status !== undefined) comp.status = batch.status;
-                    if (batch.ifcType !== undefined) comp.ifcType = batch.ifcType;
+            const ids = batch.ids.map((id) => String(id));
+            for (const cid of ids) {
+                const updates = {};
+                if (batch.teamId !== undefined) updates.team_id = batch.teamId;
+                if (batch.teamName !== undefined) updates.team_name = batch.teamName;
+                if (batch.teamLeader !== undefined) updates.team_leader = batch.teamLeader;
+                if (batch.selfInspector !== undefined) updates.self_inspector = batch.selfInspector;
+                if (batch.qualityInspector !== undefined) updates.quality_inspector = batch.qualityInspector;
+                if (batch.qualityManager !== undefined) updates.quality_manager = batch.qualityManager;
+                if (batch.planDate !== undefined) updates.plan_date = batch.planDate;
+                if (batch.status !== undefined) updates.status = batch.status;
+                if (batch.ifcType !== undefined) updates.ifc_type = batch.ifcType;
+                if (batch.componentMark !== undefined) updates.component_mark = batch.componentMark;
+                if (Object.keys(updates).length) {
+                    const updateRes = await dbApi.data.updateComponent(cid, updates);
+                    if (!updateRes.success) {
+                        return res.status(500).json({ success: false, message: updateRes.error || '批量更新构件失败' });
+                    }
                 }
-            });
+            }
         } else if (Array.isArray(components)) {
-            project.components = components;
+            const existingRes = await dbApi.data.getComponentsByProject(req.params.id);
+            if (!existingRes.success) {
+                return res.status(500).json({ success: false, message: existingRes.error || '读取构件失败' });
+            }
+            const existingIds = new Set((existingRes.data || []).map((item) => String(item.id)));
+            const incomingIds = new Set();
+            for (const item of components) {
+                const cid = String(item.id || '');
+                if (!cid) continue;
+                incomingIds.add(cid);
+                const payload = {
+                    name: item.name || '',
+                    component_mark: item.componentMark || '',
+                    spec: item.spec || '',
+                    team_id: item.teamId || '',
+                    team_name: item.teamName || '',
+                    team_leader: item.teamLeader || '',
+                    self_inspector: item.selfInspector || '',
+                    quality_inspector: item.qualityInspector || '',
+                    quality_manager: item.qualityManager || '',
+                    plan_date: item.planDate || '',
+                    status: item.status || '待检测',
+                    ifc_element_id: item.ifcElementId || '',
+                    ifc_global_id: item.ifcGlobalId || '',
+                    ifc_type: item.ifcType || ''
+                };
+                if (existingIds.has(cid)) {
+                    const updateRes = await dbApi.data.updateComponent(cid, payload);
+                    if (!updateRes.success) {
+                        return res.status(500).json({ success: false, message: updateRes.error || '保存构件失败' });
+                    }
+                } else {
+                    const createRes = await dbApi.data.createComponent({
+                        id: cid,
+                        project_id: req.params.id,
+                        ...payload
+                    });
+                    if (!createRes.success) {
+                        return res.status(500).json({ success: false, message: createRes.error || '新增构件失败' });
+                    }
+                }
+            }
+            for (const oldId of existingIds) {
+                if (!incomingIds.has(oldId)) {
+                    const deleteRes = await dbApi.data.deleteComponent(oldId);
+                    if (!deleteRes.success) {
+                        return res.status(500).json({ success: false, message: deleteRes.error || '删除旧构件失败' });
+                    }
+                }
+            }
         }
 
-        // 重新统计
-        project.inspectedCount = (project.components || []).filter(c => c.status === '已完成' || c.status === '检测中').length;
-        project.qualifiedCount = (project.components || []).filter(c => c.status === '已完成').length;
-        if (project.inspectedCount > 0) {
-            project.qualifiedRate = ((project.qualifiedCount / project.inspectedCount) * 100).toFixed(1) + '%';
+        const statsRes = await recalcProjectStats(req.params.id);
+        if (!statsRes.success) {
+            return res.status(500).json({ success: false, message: statsRes.error || '项目统计更新失败' });
         }
-
-        writeDataFile(data);
-        res.json({ success: true, project });
+        const refreshedRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        res.json({ success: true, project: refreshedRes.success ? refreshedRes.data : projectRes.data });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // 批量指派班组信息（更完整的版本）
-app.put('/api/projects/:id/components/batch-assign', requireRole(['admin', 'operator']), (req, res) => {
+app.put('/api/projects/:id/components/batch-assign', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const data = readDataFile();
-        const project = (data.projects || []).find(p => p.id === req.params.id);
-        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
+        const projectRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        if (!projectRes.success || !projectRes.data) return res.status(404).json({ success: false, message: '项目不存在' });
 
-        const {
-            ids = [],           // 要指派的构件ID数组
-            teamId,             // 班组ID
-            teamName,           // 班组名称
-            teamLeader,         // 班组长
-            selfInspector,      // 自检员
-            qualityInspector,   // 质检员
-            qualityManager,      // 质量员
-            planDate,           // 计划检测日期
-            status              // 状态
-        } = req.body;
+        const { ids = [], teamId, teamName, teamLeader, selfInspector, qualityInspector, qualityManager, planDate, status } = req.body;
+        const updates = {};
+        if (teamId !== undefined) updates.team_id = teamId;
+        if (teamName !== undefined) updates.team_name = teamName;
+        if (teamLeader !== undefined) updates.team_leader = teamLeader;
+        if (selfInspector !== undefined) updates.self_inspector = selfInspector;
+        if (qualityInspector !== undefined) updates.quality_inspector = qualityInspector;
+        if (qualityManager !== undefined) updates.quality_manager = qualityManager;
+        if (planDate !== undefined) updates.plan_date = planDate;
+        if (status !== undefined) updates.status = status;
 
-        const idSet = new Set((ids || []).map((id) => String(id)));
         let updatedCount = 0;
-        (project.components || []).forEach(comp => {
-            if (idSet.has(String(comp.id))) {
-                if (teamId !== undefined) comp.teamId = teamId;
-                if (teamName !== undefined) comp.teamName = teamName;
-                if (teamLeader !== undefined) comp.teamLeader = teamLeader;
-                if (selfInspector !== undefined) comp.selfInspector = selfInspector;
-                if (qualityInspector !== undefined) comp.qualityInspector = qualityInspector;
-                if (qualityManager !== undefined) comp.qualityManager = qualityManager;
-                if (planDate !== undefined) comp.planDate = planDate;
-                if (status !== undefined) comp.status = status;
-                updatedCount++;
+        for (const cid of (ids || []).map((id) => String(id))) {
+            const updateRes = await dbApi.data.updateComponent(cid, updates);
+            if (!updateRes.success) {
+                return res.status(500).json({ success: false, message: updateRes.error || '批量指派失败' });
             }
-        });
-
-        // 重新统计
-        project.inspectedCount = (project.components || []).filter(c => c.status === '已完成' || c.status === '检测中').length;
-        project.qualifiedCount = (project.components || []).filter(c => c.status === '已完成').length;
-        if (project.inspectedCount > 0) {
-            project.qualifiedRate = ((project.qualifiedCount / project.inspectedCount) * 100).toFixed(1) + '%';
+            updatedCount++;
         }
 
-        writeDataFile(data);
-        res.json({ success: true, updatedCount, project });
+        const statsRes = await recalcProjectStats(req.params.id);
+        if (!statsRes.success) {
+            return res.status(500).json({ success: false, message: statsRes.error || '项目统计更新失败' });
+        }
+        const refreshedRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        res.json({ success: true, updatedCount, project: refreshedRes.success ? refreshedRes.data : projectRes.data });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // 新增构件
-app.post('/api/projects/:id/components', requireRole(['admin', 'operator']), (req, res) => {
+app.post('/api/projects/:id/components', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const data = readDataFile();
-        const project = (data.projects || []).find(p => p.id === req.params.id);
-        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
+        const projectRes = await dbApi.data.getProjectById(req.params.id);
+        if (!projectRes.success || !projectRes.data) return res.status(404).json({ success: false, message: '项目不存在' });
 
-        if (!project.components) project.components = [];
-
-        const {
-            name, spec, teamId, teamName, teamLeader,
-            selfInspector, qualityInspector, qualityManager,
-            planDate, ifcElementId, ifcGlobalId, ifcType
-        } = req.body;
-
-        const newComp = {
-            id: genCompId(),
-            name: name || '未命名构件',
+        const { name, spec, teamId, teamName, teamLeader, selfInspector, qualityInspector, qualityManager, planDate, ifcElementId, ifcGlobalId, ifcType, componentMark } = req.body;
+        const componentId = genCompId();
+        const createRes = await dbApi.data.createComponent({
+            id: componentId,
+            project_id: req.params.id,
+            name: componentMark || name || '未命名构件',
+            component_mark: componentMark || '',
             spec: spec || '',
-            teamId: teamId || '',
-            teamName: teamName || '',
-            teamLeader: teamLeader || '',
-            selfInspector: selfInspector || '',
-            qualityInspector: qualityInspector || '',
-            qualityManager: qualityManager || '',
-            planDate: planDate || getTodayStr(),
+            team_id: teamId || '',
+            team_name: teamName || '',
+            team_leader: teamLeader || '',
+            self_inspector: selfInspector || '',
+            quality_inspector: qualityInspector || '',
+            quality_manager: qualityManager || '',
+            plan_date: planDate || getTodayStr(),
             status: '待检测',
-            ifcElementId: ifcElementId || '',
-            ifcGlobalId: ifcGlobalId || '',
-            ifcType: ifcType || ''
-        };
-
-        project.components.push(newComp);
-        project.beamColumnCount = (project.components || []).length;
-        writeDataFile(data);
-        res.json({ success: true, component: newComp, project });
+            ifc_element_id: ifcElementId || '',
+            ifc_global_id: ifcGlobalId || '',
+            ifc_type: ifcType || ''
+        });
+        if (!createRes.success) {
+            return res.status(500).json({ success: false, message: createRes.error || '新增构件失败' });
+        }
+        const statsRes = await recalcProjectStats(req.params.id);
+        if (!statsRes.success) {
+            return res.status(500).json({ success: false, message: statsRes.error || '项目统计更新失败' });
+        }
+        const componentRes = await dbApi.data.getComponentById(componentId);
+        const refreshedRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        res.json({
+            success: true,
+            component: componentRes.success ? mapDbComponentToApi(componentRes.data) : null,
+            project: refreshedRes.success ? refreshedRes.data : null
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // 批量新增构件
-app.post('/api/projects/:id/components/batch', requireRole(['admin', 'operator']), (req, res) => {
+app.post('/api/projects/:id/components/batch', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const data = readDataFile();
-        const project = (data.projects || []).find(p => p.id === req.params.id);
-        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
-
-        if (!project.components) project.components = [];
+        const projectRes = await dbApi.data.getProjectById(req.params.id);
+        if (!projectRes.success || !projectRes.data) return res.status(404).json({ success: false, message: '项目不存在' });
 
         const items = Array.isArray(req.body.items) ? req.body.items : [];
         const added = [];
-
-        items.forEach(item => {
-            const newComp = {
-                id: genCompId(),
-                name: item.name || '未命名构件',
+        for (const item of items) {
+            const componentId = genCompId();
+            const createRes = await dbApi.data.createComponent({
+                id: componentId,
+                project_id: req.params.id,
+                name: item.componentMark || item.name || '未命名构件',
+                component_mark: item.componentMark || '',
                 spec: item.spec || '',
-                teamId: item.teamId || '',
-                teamName: item.teamName || '',
-                teamLeader: item.teamLeader || '',
-                selfInspector: item.selfInspector || '',
-                qualityInspector: item.qualityInspector || '',
-                qualityManager: item.qualityManager || '',
-                planDate: item.planDate || getTodayStr(),
+                team_id: item.teamId || '',
+                team_name: item.teamName || '',
+                team_leader: item.teamLeader || '',
+                self_inspector: item.selfInspector || '',
+                quality_inspector: item.qualityInspector || '',
+                quality_manager: item.qualityManager || '',
+                plan_date: item.planDate || getTodayStr(),
                 status: item.status || '待检测',
-                ifcElementId: item.ifcElementId || '',
-                ifcGlobalId: item.ifcGlobalId || '',
-                ifcType: item.ifcType || ''
-            };
-            project.components.push(newComp);
-            added.push(newComp);
+                ifc_element_id: item.ifcElementId || '',
+                ifc_global_id: item.ifcGlobalId || '',
+                ifc_type: item.ifcType || ''
+            });
+            if (!createRes.success) {
+                return res.status(500).json({ success: false, message: createRes.error || '批量新增构件失败' });
+            }
+            const componentRes = await dbApi.data.getComponentById(componentId);
+            if (componentRes.success && componentRes.data) {
+                added.push(mapDbComponentToApi(componentRes.data));
+            }
+        }
+        const statsRes = await recalcProjectStats(req.params.id);
+        if (!statsRes.success) {
+            return res.status(500).json({ success: false, message: statsRes.error || '项目统计更新失败' });
+        }
+        const refreshedRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        res.json({
+            success: true,
+            added: added.length,
+            components: added,
+            project: refreshedRes.success ? refreshedRes.data : null
         });
-
-        project.beamColumnCount = (project.components || []).length;
-        writeDataFile(data);
-        res.json({ success: true, added: added.length, components: added, project });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // 删除构件
-app.delete('/api/projects/:id/components/:cid', requireRole(['admin']), (req, res) => {
+app.delete('/api/projects/:id/components/:cid', requireRole(['admin']), async (req, res) => {
     try {
-        const data = readDataFile();
-        const project = (data.projects || []).find(p => p.id === req.params.id);
-        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
+        const projectRes = await dbApi.data.getProjectById(req.params.id);
+        if (!projectRes.success || !projectRes.data) return res.status(404).json({ success: false, message: '项目不存在' });
 
-        project.components = (project.components || []).filter(c => c.id !== req.params.cid);
-        project.beamColumnCount = (project.components || []).length;
-        project.inspectedCount = (project.components || []).filter(c => c.status === '已完成' || c.status === '检测中').length;
-        project.qualifiedCount = (project.components || []).filter(c => c.status === '已完成').length;
-        if (project.inspectedCount > 0) {
-            project.qualifiedRate = ((project.qualifiedCount / project.inspectedCount) * 100).toFixed(1) + '%';
+        const deleteRes = await dbApi.data.deleteComponent(req.params.cid);
+        if (!deleteRes.success) {
+            return res.status(500).json({ success: false, message: deleteRes.error || '删除构件失败' });
         }
-        writeDataFile(data);
-        res.json({ success: true, project });
+        const statsRes = await recalcProjectStats(req.params.id);
+        if (!statsRes.success) {
+            return res.status(500).json({ success: false, message: statsRes.error || '项目统计更新失败' });
+        }
+        const refreshedRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        res.json({ success: true, project: refreshedRes.success ? refreshedRes.data : null });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // 更新项目基本信息
-app.put('/api/projects/:id', requireRole(['admin', 'operator']), (req, res) => {
+app.put('/api/projects/:id', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const data = readDataFile();
-        const project = (data.projects || []).find(p => p.id === req.params.id);
-        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
+        const projectRes = await dbApi.data.getProjectById(req.params.id);
+        if (!projectRes.success || !projectRes.data) return res.status(404).json({ success: false, message: '项目不存在' });
 
         const { name, ifcUrl, beamColumnCount, inspectedCount, qualifiedCount } = req.body;
-        if (name !== undefined) project.name = name;
-        if (ifcUrl !== undefined) project.ifcUrl = ifcUrl;
-        if (beamColumnCount !== undefined) project.beamColumnCount = Number(beamColumnCount);
-        if (inspectedCount !== undefined) project.inspectedCount = Number(inspectedCount);
-        if (qualifiedCount !== undefined) project.qualifiedCount = Number(qualifiedCount);
-        if (project.inspectedCount > 0) {
-            project.qualifiedRate = ((project.qualifiedCount / project.inspectedCount) * 100).toFixed(1) + '%';
+        const updates = {};
+        if (name !== undefined) updates.name = name;
+        if (ifcUrl !== undefined) updates.ifc_url = ifcUrl;
+        if (beamColumnCount !== undefined) updates.beam_column_count = Number(beamColumnCount) || 0;
+        if (inspectedCount !== undefined) updates.inspected_count = Number(inspectedCount) || 0;
+        if (qualifiedCount !== undefined) updates.qualified_count = Number(qualifiedCount) || 0;
+        if (updates.inspected_count > 0 && updates.qualified_count !== undefined) {
+            updates.qualified_rate = `${((updates.qualified_count / updates.inspected_count) * 100).toFixed(1)}%`;
         }
-        writeDataFile(data);
-        res.json({ success: true, project });
+        const updateRes = await dbApi.data.updateProject(req.params.id, updates);
+        if (!updateRes.success) {
+            return res.status(500).json({ success: false, message: updateRes.error || '更新项目失败' });
+        }
+        const refreshedRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        res.json({ success: true, project: refreshedRes.success ? refreshedRes.data : null });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-const server = app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+async function startServer() {
+    try {
+        if (typeof dbApi.initDatabase === 'function') {
+            await dbApi.initDatabase();
+        }
 
-server.on('error', (err) => {
-    console.error('Server startup error:', err);
-});
+        const server = app.listen(PORT, () => {
+            console.log(`Server is running on http://localhost:${PORT}`);
+        });
+
+        server.on('error', (err) => {
+            console.error('Server startup error:', err);
+        });
+    } catch (err) {
+        console.error('Database initialization failed:', err);
+        process.exit(1);
+    }
+}
+
+startServer();

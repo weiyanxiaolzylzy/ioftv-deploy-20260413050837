@@ -16,6 +16,7 @@
           <AdvancedIfcViewer
             ref="ifcViewer"
             :ifcUrl="currentIfcUrl"
+            :projectId="currentProject && currentProject.id"
             :enablePick="true"
             :showElementList="false"
             :showHints="true"
@@ -131,7 +132,7 @@ export default {
           { label: '不修改', value: '' },
           { label: '待检测', value: '待检测' },
           { label: '检测中', value: '检测中' },
-          { label: '已完成', value: '已完成' },
+          { label: '合格', value: '合格' },
           { label: '不合格', value: '不合格' }
         ]
       },
@@ -176,7 +177,7 @@ export default {
     this.loadAssignPresets()
     this.fetchGroups()        // 从后端获取班组列表
     this.loadPersonPresets()
-    this.bootstrapFromRoute()
+    this.bootstrapFromRoute().then(() => this.refreshProjectFromServer())
     document.addEventListener('click', this.closeAllDD)
   },
   beforeDestroy() {
@@ -271,7 +272,7 @@ export default {
             { label: '不修改', value: '' },
             { label: '待检测', value: '待检测' },
             { label: '检测中', value: '检测中' },
-            { label: '已完成', value: '已完成' },
+            { label: '合格', value: '合格' },
             { label: '不合格', value: '不合格' }
           ]
           this.personPresets.status = [...defaults, ...saved]
@@ -348,29 +349,11 @@ export default {
       const path = u.startsWith('/') ? u : `/${u}`
       return `${origin}${path}`
     },
-    readLocalProjects() {
-      try {
-        return JSON.parse(localStorage.getItem('cm_projects') || '[]')
-      } catch (e) {
-        return []
-      }
-    },
-    writeLocalProjects(list) {
-      localStorage.setItem('cm_projects', JSON.stringify(list))
-    },
-    persistLocalCmProjects(updated) {
-      if (!updated || !updated.id) return
-      const list = this.readLocalProjects()
-      const i = list.findIndex(p => String(p.id) === String(updated.id))
-      if (i >= 0) list[i] = { ...list[i], ...updated, components: updated.components || list[i].components }
-      else list.push({ ...updated })
-      this.writeLocalProjects(list)
-      localStorage.setItem('cm_activeId', String(updated.id))
-      if (this.$bus) {
-        this.$bus.$emit('project-list-update', list)
-        this.$bus.$emit('project-change', updated)
-        this.$bus.$emit('project-ifc-change', updated.ifcUrl || '')
-      }
+    emitProjectUpdated(updated) {
+      if (!updated || !updated.id || !this.$bus) return
+      this.$bus.$emit('project-list-update')
+      this.$bus.$emit('project-change', updated)
+      this.$bus.$emit('project-ifc-change', updated.ifcUrl || '')
     },
     async bootstrapFromRoute() {
       const q = this.$route.query || {}
@@ -383,49 +366,100 @@ export default {
         return
       }
 
-      // 和 center-map.vue 保持一致：直接读 localStorage（同源）
-      const list = this.readLocalProjects()
-      let project = list.find(p => String(p.id) === projectId) || null
-
-      // 若本地没有，尝试从服务器同步一次再读
-      if (!project) {
-        try {
-          const res = await fetch('/api/projects', { headers: getAuthHeaders() })
-          const data = await res.json()
-          if (data && data.success && Array.isArray(data.data)) {
-            project = data.data.find(p => String(p.id) === projectId) || null
-          }
-        } catch (e) {
-          console.warn('project-ifc: api projects fallback error', e)
+      let project = null
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, { headers: getAuthHeaders() })
+        const data = await res.json()
+        if (data && data.success && data.data) {
+          project = data.data
         }
+      } catch (e) {
+        console.warn('project-ifc: load project failed', e)
       }
 
       this.currentProject = project
       const rawUrl = (project && project.ifcUrl) ? project.ifcUrl : ''
       this.currentIfcUrl = rawUrl ? this.resolveIfcAbsUrl(rawUrl) : ''
     },
+    async refreshProjectFromServer() {
+      if (!this.currentProject || !this.currentProject.id) return
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(this.currentProject.id)}`, { headers: getAuthHeaders() })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && data && data.success && data.data) {
+          this.currentProject = data.data
+          const rawUrl = data.data.ifcUrl || ''
+          this.currentIfcUrl = rawUrl ? this.resolveIfcAbsUrl(rawUrl) : ''
+          this.emitProjectUpdated(data.data)
+        }
+      } catch (e) { /* ignore */ }
+    },
     onListCheckboxSelection({ rows }) {
       this.listSelectedRows = Array.isArray(rows) ? rows.slice() : []
     },
-    onIfcElementClick(element) {
+    sanitizeComponentMarkForQuery(value) {
+      if (value == null) return ''
+      const mark = String(value).trim()
+      if (!mark) return ''
+      return mark.replace(/\(\?\)/g, '').trim()
+    },
+    async fetchComponentDetail(element) {
+      if (!element || !element.expressID || !this.currentProject || !this.currentProject.id) return null
+      try {
+        const params = new URLSearchParams()
+        params.set('expressID', String(element.expressID))
+        const res = await fetch(`/api/projects/${encodeURIComponent(this.currentProject.id)}/components/detail?${params.toString()}`, {
+          headers: getAuthHeaders()
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && data && data.success && data.data) {
+          return data.data
+        }
+      } catch (e) {
+        console.warn('fetchComponentDetail failed:', e)
+      }
+      return null
+    },
+    async onIfcElementClick(element) {
       if (!element || !element.expressID || !this.currentProject) return
+      const detail = await this.fetchComponentDetail(element)
+      const enriched = {
+        ...element,
+        ...(detail || {}),
+        expressID: element.expressID,
+        globalId: (detail && detail.ifcGlobalId) || element.globalId || '',
+        componentMark: (detail && detail.componentMark) || element.componentMark || '',
+        name: (detail && (detail.componentMark || detail.name)) || element.componentMark || element.name || element.globalId || '',
+      }
       localStorage.setItem('cm_selected_component', JSON.stringify({
         projectId: this.currentProject.id,
         ifcUrl: this.currentIfcUrl,
-        expressID: element.expressID,
-        name: element.componentMark || element.name || element.globalId || '',
-        globalId: element.globalId || '',
+        expressID: enriched.expressID,
+        componentMark: enriched.componentMark || '',
+        componentName: enriched.name || '',
+        name: enriched.name || '',
+        globalId: enriched.globalId || '',
+        detail: detail || null,
         timestamp: Date.now()
       }))
     },
-    onIfcElementDblClick(element) {
+    async onIfcElementDblClick(element) {
+      const detail = await this.fetchComponentDetail(element)
+      const enriched = {
+        ...element,
+        ...(detail || {}),
+        expressID: element.expressID,
+        globalId: (detail && detail.ifcGlobalId) || element.globalId || '',
+        componentMark: (detail && detail.componentMark) || element.componentMark || '',
+        name: (detail && (detail.componentMark || detail.name)) || element.componentMark || element.name || element.globalId || '',
+      }
       if (this.$bus) {
-        this.$bus.$emit('detection-element-selected', { element, ifcUrl: this.currentIfcUrl, source: 'project-ifc' })
+        this.$bus.$emit('detection-element-selected', { element: enriched, ifcUrl: this.currentIfcUrl, source: 'project-ifc' })
         this.$bus.$emit('component-ifc-sync', {
           projectId: this.currentProject && this.currentProject.id,
           ifcUrl: this.currentIfcUrl,
-          expressID: element.expressID,
-          element
+          expressID: enriched.expressID,
+          element: enriched
         })
       }
     },
@@ -433,87 +467,29 @@ export default {
     async loadFreshProject() {
       if (!this.currentProject || !this.currentProject.id) return this.currentProject
       const targetId = String(this.currentProject.id)
-      // 优先从 localStorage 读取（与 center-map.vue 一致）
-      const list = this.readLocalProjects()
-      let local = list.find(p => String(p.id) === targetId)
-      if (local) {
-        this.currentProject = local
-        return local
-      }
-      // 回退到服务器
       try {
         const res = await fetch(`/api/projects/${targetId}`, { headers: getAuthHeaders() })
         const data = await res.json()
         if (data && data.success && data.data) {
           this.currentProject = data.data
+          const rawUrl = data.data.ifcUrl || ''
+          this.currentIfcUrl = rawUrl ? this.resolveIfcAbsUrl(rawUrl) : ''
           return data.data
         }
       } catch (e) {}
       return this.currentProject
     },
-    ensureComponentsOnServer(project) {
-      let p = project
-      const planDate = this.assignForm.planDate || this.getTodayStr()
-      const comps = JSON.parse(JSON.stringify(p.components || []))
-      const projIfcUrl = this.currentIfcUrl || p.ifcUrl || ''
-      for (const row of this.listSelectedRows) {
-        const eid = String(row.expressID)
-        if (comps.some(c => String(c.ifcElementId) === eid)) continue
-        const c = {
-          id: 'L' + Date.now() + '_' + eid,
-          name: row.name || `构件-${eid}`,
-          ifcElementId: eid,
-          ifcGlobalId: row.globalId || '',
-          ifcType: row.type || '',
-          ifcUrl: projIfcUrl,
-          spec: '',
-          status: '待检测',
-          planDate: planDate,
-        }
-        comps.push(c)
-      }
-      const updated = { ...p, components: comps, beamColumnCount: comps.length }
-      if (projIfcUrl && !updated.ifcUrl) updated.ifcUrl = projIfcUrl
-      this.currentProject = updated
-      this.persistLocalCmProjects(updated)
-      return Promise.resolve(updated)
-    },
-    applyAssignLocalMerge(project) {
-      const planDate = this.assignForm.planDate || this.getTodayStr()
-      const comps = JSON.parse(JSON.stringify(project.components || []))
-      const sel = new Set(this.listSelectedRows.map(r => String(r.expressID)))
-      const projIfcUrl = this.currentIfcUrl || project.ifcUrl || ''
-      for (const row of this.listSelectedRows) {
-        const eid = String(row.expressID)
-        let c = comps.find(x => String(x.ifcElementId) === eid)
-        if (!c) {
-          c = {
-            id: 'L' + Date.now() + '_' + eid,
-            name: row.componentMark || row.name || `构件-${eid}`,
-            ifcElementId: eid,
-            ifcGlobalId: row.globalId || '',
-            ifcType: row.type || '',
-            ifcUrl: projIfcUrl,
-            spec: '',
-            status: '待检测'
-          }
-          comps.push(c)
-        } else {
-          // 已有构件若缺少 ifcUrl，补充进来（确保大屏能关联到模型）
-          if (!c.ifcUrl) c.ifcUrl = projIfcUrl
-        }
-        if (this.assignForm.teamName.trim()) c.teamName = this.assignForm.teamName.trim()
-        if (this.assignForm.teamLeader.trim()) c.teamLeader = this.assignForm.teamLeader.trim()
-        if (this.assignForm.qualityInspector.trim()) c.qualityInspector = this.assignForm.qualityInspector.trim()
-        if (this.assignForm.qualityManager.trim()) c.qualityManager = this.assignForm.qualityManager.trim()
-        c.planDate = planDate
-        if (this.assignForm.status) c.status = this.assignForm.status
-      }
-      const updated = { ...project, components: comps, beamColumnCount: comps.length }
-      // 显式合并 ifcUrl，避免浅展开时丢失
-      if (projIfcUrl && !updated.ifcUrl) updated.ifcUrl = projIfcUrl
-      this.currentProject = updated
-      this.persistLocalCmProjects(updated)
+    buildBatchAssignBody(project) {
+      const ids = (project.components || [])
+        .filter(c => this.listSelectedRows.some(r => String(r.expressID) === String(c.ifcElementId)))
+        .map(c => c.id)
+      const body = { ids, planDate: this.assignForm.planDate || this.getTodayStr() }
+      if (this.assignForm.teamName.trim()) body.teamName = this.assignForm.teamName.trim()
+      if (this.assignForm.teamLeader.trim()) body.teamLeader = this.assignForm.teamLeader.trim()
+      if (this.assignForm.qualityInspector.trim()) body.qualityInspector = this.assignForm.qualityInspector.trim()
+      if (this.assignForm.qualityManager.trim()) body.qualityManager = this.assignForm.qualityManager.trim()
+      if (this.assignForm.status) body.status = this.assignForm.status
+      return body
     },
     async applyAssignForm() {
       if (!this.currentProject || !this.currentProject.id) return
@@ -533,56 +509,27 @@ export default {
 
       this.applyBusy = true
       try {
-        const project = this.currentProject
-        this.applyAssignLocalMerge(project)
-        this.$Message && this.$Message.success(`已更新 ${this.listSelectedRows.length} 个构件`)
-        if (this.$bus) this.$bus.$emit('project-list-update')
-        if (this.$bus) this.$bus.$emit('project-change', this.currentProject)
-        // 后台尝试同步到服务器
-        this._syncBatchAssignToServer()
-      } catch (e) {
-        console.error(e)
-        this.$Message && this.$Message.error('保存失败')
-      } finally {
-        this.applyBusy = false
-      }
-    },
-    async _syncBatchAssignToServer() {
-      const project = this.currentProject
-      if (!project || !project.id) return
-      try {
-        const checkRes = await fetch(`/api/projects`, { headers: getAuthHeaders() })
-        const checkData = await checkRes.json()
-        const serverProjects = (checkData && checkData.success && Array.isArray(checkData.data)) ? checkData.data : []
-        const existsOnServer = serverProjects.some(p => String(p.id) === String(project.id))
-        if (!existsOnServer) {
-          console.log('项目不在服务器上，跳过远程同步，本地数据已保存')
-          return
-        }
-        const ids = (project.components || [])
-          .filter(c => this.listSelectedRows.some(r => String(r.expressID) === String(c.ifcElementId)))
-          .map(c => c.id)
-        if (!ids.length) return
-        const body = { ids }
-        if (this.assignForm.teamName.trim()) body.teamName = this.assignForm.teamName.trim()
-        if (this.assignForm.teamLeader.trim()) body.teamLeader = this.assignForm.teamLeader.trim()
-        if (this.assignForm.qualityInspector.trim()) body.qualityInspector = this.assignForm.qualityInspector.trim()
-        if (this.assignForm.qualityManager.trim()) body.qualityManager = this.assignForm.qualityManager.trim()
-        body.planDate = this.assignForm.planDate || this.getTodayStr()
-        if (this.assignForm.status) body.status = this.assignForm.status
+        const project = await this.loadFreshProject()
+        if (!project || !project.id) throw new Error('项目不存在或加载失败')
+        const body = this.buildBatchAssignBody(project)
+        if (!body.ids.length) throw new Error('所选构件尚未同步到后端，请重新进入项目后重试')
         const res = await fetch(`/api/projects/${project.id}/components/batch-assign`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(body)
         })
-        const data = await res.json()
-        if (data && data.success && data.project) {
-          this.currentProject = data.project
-          this.persistLocalCmProjects(data.project)
-          console.log('batch-assign synced to server')
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || !data || !data.success || !data.project) {
+          throw new Error((data && data.message) || '保存失败')
         }
+        this.currentProject = data.project
+        this.emitProjectUpdated(data.project)
+        this.$Message && this.$Message.success(`已更新 ${this.listSelectedRows.length} 个构件`)
       } catch (e) {
-        console.warn('batch-assign server sync skipped:', e.message || e)
+        console.error(e)
+        this.$Message && this.$Message.error(e.message || '保存失败')
+      } finally {
+        this.applyBusy = false
       }
     }
   }

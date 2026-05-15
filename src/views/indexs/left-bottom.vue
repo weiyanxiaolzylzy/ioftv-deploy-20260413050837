@@ -35,7 +35,6 @@
         <!-- 表头 -->
         <div class="row row--head">
           <span class="cell cell--project">项目名称</span>
-          <span class="cell cell--type">构件编号</span>
           <span class="cell cell--num">构件编号</span>
           <span class="cell cell--team">班组</span>
         </div>
@@ -51,7 +50,6 @@
             <span class="cell cell--project" :title="item.project">
               <span class="dot dot--project" />{{ item.project || '—' }}
             </span>
-            <span class="cell cell--type" :title="item.componentName">{{ item.componentName || '—' }}</span>
             <span class="cell cell--num" :title="item.componentName">{{ item.componentName || '—' }}</span>
             <span class="cell cell--team" :title="item.teamName || item.team">{{ item.teamName || item.team || '—' }}</span>
           </div>
@@ -120,7 +118,7 @@
               <select v-model="item.status" class="inp inp--sm">
                 <option value="待检测">待检测</option>
                 <option value="检测中">检测中</option>
-                <option value="已完成">已完成</option>
+                <option value="合格">合格</option>
                 <option value="不合格">不合格</option>
               </select>
               <button type="button" class="btn-del" @click="deleteRow(idx)">删</button>
@@ -205,40 +203,15 @@ export default {
       try {
         const res = await fetch('/api/today-plan', { headers: getAuthHeaders() })
         const d = await res.json()
-        if (d && d.success && Array.isArray(d.data) && d.data.length > 0) {
+        if (d && d.success && Array.isArray(d.data)) {
           this.todayList = d.data
           this.$nextTick(() => this.startScroll())
           return
         }
-      } catch (e) {}
-      this.fetchTodayPlanFromLocal()
-    },
-
-    fetchTodayPlanFromLocal() {
-      try {
-        const raw = localStorage.getItem('cm_projects')
-        const projects = raw ? JSON.parse(raw) : []
-        const todayStr = new Date().toISOString().slice(0, 10)
-        const items = []
-        for (const p of projects) {
-          for (const c of (p.components || [])) {
-            if (c.planDate && c.planDate !== todayStr) continue
-            items.push({
-              project: p.name || '',
-              projectId: p.id || '',
-              componentId: c.id || '',
-              componentName: c.componentMark || c.name || '',
-              team: c.teamLeader || '',
-              teamName: c.teamName || '',
-              type: c.ifcType || (c.name || '').split(' ')[0] || '',
-              status: c.status || '待检测',
-            })
-          }
-        }
-        items.sort((a, b) => (a.project || '').localeCompare(b.project || '', 'zh'))
-        this.todayList = items
-        this.$nextTick(() => this.startScroll())
-      } catch (e) { this.todayList = [] }
+      } catch (e) {
+        this.todayList = []
+      }
+      this.$nextTick(() => this.startScroll())
     },
 
     async fetchHistory() {
@@ -281,39 +254,16 @@ export default {
           })) })
         })
         const d = await res.json()
-        if (d && d.success) { this.todayList = d.data; this.closeModal(); return }
-      } catch (e) {}
-      this.saveEditToLocal(); this.closeModal()
-    },
-
-    saveEditToLocal() {
-      try {
-        const raw = localStorage.getItem('cm_projects')
-        const projects = raw ? JSON.parse(raw) : []
-        for (const item of this.editList) {
-          const p = projects.find(x => x.id === item.projectId)
-          if (!p) continue
-          if (!p.components) p.components = []
-          const c = p.components.find(cc => cc.id === item.componentId)
-          if (c) {
-            if (item.team) c.teamLeader = item.team
-            if (item.planDate) c.planDate = item.planDate
-            if (item.status) c.status = item.status
-          } else {
-            p.components.push({
-              id: item.componentId || 'L' + Date.now(),
-              name: item.componentName || item.project,
-              teamLeader: item.team || '',
-              planDate: item.planDate || '',
-              status: item.status || '待检测',
-              ifcUrl: p.ifcUrl || '',
-            })
-          }
+        if (d && d.success) {
+          this.todayList = d.data
+          this.closeModal()
+          if (this.$bus) this.$bus.$emit('project-list-update')
+          return
         }
-        localStorage.setItem('cm_projects', JSON.stringify(projects))
-        this.fetchTodayPlanFromLocal()
-        if (this.$bus) this.$bus.$emit('project-list-update')
-      } catch (e) { alert('保存失败') }
+        throw new Error((d && d.message) || '保存失败')
+      } catch (e) {
+        alert(e.message || '保存失败')
+      }
     }
   }
 };

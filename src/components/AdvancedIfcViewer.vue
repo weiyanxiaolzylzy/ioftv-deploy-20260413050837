@@ -190,6 +190,10 @@ export default {
       type: String,
       default: ''
     },
+    projectId: {
+      type: [String, Number],
+      default: ''
+    },
     // Whether to enable element picking
     enablePick: {
       type: Boolean,
@@ -313,12 +317,12 @@ export default {
     },
     iframeSrc() {
       if (!this.ifcUrl) return '';
-      // 开发模式：独立查看器在 localhost:5173
-      // 生产模式：独立查看器在同域的 /ifc/ 路径下
-      // iframe 的 src 是独立查看器页面，ifcUrl 作为 query 参数传递
-      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const base = isDev ? 'http://localhost:5173' : (window.location.origin + '/ifc');
+      // 主工程已通过 devServer 代理 /ifc 到独立查看器，开发和生产都统一走同源路径。
+      const base = `${window.location.origin}/ifc`;
       let q = `ifcUrl=${encodeURIComponent(this.ifcUrl)}`;
+      if (this.projectId !== '' && this.projectId !== null && this.projectId !== undefined) {
+        q += `&projectId=${encodeURIComponent(String(this.projectId))}`;
+      }
       if (this.embedMode) {
         q += `&embed=${encodeURIComponent(this.embedMode)}`;
       }
@@ -409,7 +413,7 @@ export default {
     },
     onIframeMessage(event) {
       // 忽略来自非同源 iframe 的消息
-      const allowedOrigins = ['http://localhost:5173', window.location.origin];
+      const allowedOrigins = [window.location.origin];
       if (!allowedOrigins.includes(event.origin)) return;
       const iframe = this.$refs.viewerIframe;
       if (!iframe || event.source !== iframe.contentWindow) return;
@@ -464,11 +468,7 @@ export default {
     postToIframe(msg) {
       const iframe = this.$refs.viewerIframe;
       if (!iframe || !iframe.contentWindow) return;
-      // 开发模式下发送到 localhost:5173，生产模式下发送到同源 /ifc
-      const targetOrigin = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:5173'
-        : window.location.origin + '/ifc';
-      iframe.contentWindow.postMessage(msg, targetOrigin);
+      iframe.contentWindow.postMessage(msg, window.location.origin);
     },
 
     // web-ifc 在 webpack 多 chunk 下 currentScript 不可用，导致 locateFile 指向错误路径，wasm 加载失败。

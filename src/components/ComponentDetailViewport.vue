@@ -59,15 +59,12 @@ export default {
   computed: {
     iframeSrc() {
       if (!this.ifcUrl) return '';
-      const isDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-      const base = isDev ? 'http://localhost:5173' : (window.location.origin + '/ifc');
+      const base = `${window.location.origin}/ifc`;
       return `${base}/?ifcUrl=${encodeURIComponent(this.ifcUrl)}&embed=element-panel`;
     },
     // postMessage 的 targetOrigin（必须与 iframe 同源）
     targetOrigin() {
-      return ['localhost', '127.0.0.1'].includes(window.location.hostname)
-        ? 'http://localhost:5173'
-        : window.location.origin;
+      return window.location.origin;
     }
   },
 
@@ -99,7 +96,7 @@ export default {
     },
 
     onMessage(event) {
-      if (!['http://localhost:5173', window.location.origin].includes(event.origin)) return;
+      if (event.origin !== window.location.origin) return;
       const iframe = this.$refs.viewerIframe;
       if (!iframe || event.source !== iframe.contentWindow) return;
       const data = event.data;

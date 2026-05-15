@@ -9,7 +9,7 @@
             <img :src="pioneer.photoUrl || '/people.jpg'" alt="班组照片" />
           </div>
           <div class="pioneer_details">
-            <div class="pioneer_name">{{ pioneer.groupName }}</div>
+            <div class="pioneer_name">{{ pioneer.groupName || '未分配班组' }}</div>
             <div class="pioneer_stat">
               <span class="label">装配合格率</span>
               <span class="value">{{ pioneer.passingRate }}%</span>
@@ -157,9 +157,9 @@ export default {
         value: 0
       },
       pioneer: {
-        groupName: '一班组',
-        passingRate: 99.2,
-        photoUrl: '' // 使用默认图片
+        groupName: '',
+        passingRate: 0,
+        photoUrl: '/people.jpg'
       },
       rankingList: [
         { name: '一班组', value: 99.2 },
@@ -260,7 +260,7 @@ export default {
             const res = await fetch('/api/star', { headers: getAuthHeaders() });
             const data = await res.json();
             if (data) {
-                this.pioneer = data.star || data;
+                this.pioneer = { ...(data.star || data) };
             }
             
             // 获取排名信息
@@ -323,13 +323,14 @@ export default {
             return;
         }
         
-        const formData = new FormData();
-        formData.append('name', this.newGroup.name);
-        if (this.newGroup.file) {
-            formData.append('photo', this.newGroup.file);
-        }
-
         try {
+            const formData = new FormData();
+            formData.append('name', this.newGroup.name);
+            if (this.newGroup.file) {
+              formData.append('photo', this.newGroup.file);
+            } else {
+              formData.append('photoUrl', `/banzu/${encodeURIComponent(`${this.newGroup.name}.jpg`)}`);
+            }
             const response = await fetch('/api/groups', {
                 method: 'POST',
                 headers: getAuthHeaders(),
@@ -387,11 +388,11 @@ export default {
       if (type === 'pioneer') {
         // Initialize pioneer form
         this.editForm = {
-          groupName: this.pioneer.groupName,
+          groupName: this.pioneer.groupName || '',
           passingRate: this.pioneer.passingRate,
-          photoUrl: this.pioneer.photoUrl,
+          photoUrl: this.pioneer.photoUrl || '',
           photoFile: null,
-          photoPreview: this.pioneer.photoUrl || '/people.jpg'
+          photoPreview: this.pioneer.photoUrl || ''
         };
         this.fetchGroups(); // 获取班组列表
       } else if (type === 'ranking' && index > -1) {
@@ -410,12 +411,20 @@ export default {
     handleFileChange(e) {
       const file = e.target.files[0];
       if (file) {
-        this.editForm.photoFile = file;
+        this.editForm.photoFile = null;
         const reader = new FileReader();
-        reader.onload = (e) => {
-          this.editForm.photoPreview = e.target.result;
+        reader.onload = (event) => {
+          this.editForm.photoPreview = event.target.result;
         };
         reader.readAsDataURL(file);
+        file.arrayBuffer().then((buffer) => {
+          this.editForm.photoFile = new File([buffer], file.name, {
+            type: file.type || 'application/octet-stream',
+            lastModified: Date.now()
+          });
+        }).catch(() => {
+          this.editForm.photoFile = file;
+        });
       }
     },
     saveData() {
@@ -430,15 +439,12 @@ export default {
         this.notifyNoPermission()
         return
       }
-      // 准备提交数据
       const formData = new FormData();
       formData.append('groupName', this.editForm.groupName);
       formData.append('passingRate', this.editForm.passingRate);
-      
       if (this.editForm.photoFile) {
         formData.append('photo', this.editForm.photoFile);
       } else if (this.editForm.photoUrl) {
-        // 如果没有新文件，但有 URL（比如选了预设班组），传 URL
         formData.append('photoUrl', this.editForm.photoUrl);
       }
 
@@ -451,7 +457,8 @@ export default {
         const data = await response.json();
         
         if (data.success || data.data) {
-            this.pioneer = data.data || data;
+            this.pioneer = { ...(data.data || data) };
+            await this.fetchData();
             this.closeModal();
         } else {
             alert('保存失败: ' + (data.message || '未知错误'));
@@ -482,6 +489,7 @@ export default {
           const res = await response.json()
           if (res && res.success) {
             this.rankingList = this.normalizeRankingList(res.data || next)
+            await this.fetchData()
             this.closeModal()
             return
           }

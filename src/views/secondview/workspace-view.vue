@@ -103,7 +103,14 @@
             </div>
             <div class="current-group-info">
               <img :src="currentGroupPhoto || '/people.jpg'" class="current-group-avatar" alt="">
-              <div class="current-group-name">{{ currentGroupName }}</div>
+              <div>
+                <div class="current-group-name">{{ currentGroupName }}</div>
+                <div class="current-group-meta" v-if="currentTeamLeader || currentQualityInspector || currentQualityManager">
+                  <span v-if="currentTeamLeader">班组长：{{ currentTeamLeader }}</span>
+                  <span v-if="currentQualityInspector">质检员：{{ currentQualityInspector }}</span>
+                  <span v-if="currentQualityManager">质量员：{{ currentQualityManager }}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -401,6 +408,9 @@ export default {
       // 当前班组信息
       currentGroupName: '',
       currentGroupPhoto: '',
+      currentTeamLeader: '',
+      currentQualityInspector: '',
+      currentQualityManager: '',
       groups: [],
 
       // 3D相机点云视图
@@ -469,15 +479,7 @@ export default {
       else alert('当前账号仅支持查看')
     },
     loadGroupFromStorage() {
-      const groupId = localStorage.getItem('currentGroupId')
-      const groupName = localStorage.getItem('currentGroupName')
-      if (groupName) {
-        this.currentGroupName = groupName
-        this.currentGroupPhoto = localStorage.getItem('currentGroupPhoto') || ''
-      }
-      if (groupId) {
-        this.fetchGroupPhoto(groupId)
-      }
+      this.syncCurrentGroupFromPlan()
     },
     async fetchGroupPhoto(groupId) {
       try {
@@ -502,16 +504,21 @@ export default {
         console.warn('获取班组列表失败', err)
       }
     },
-    onCurrentGroupChanged(payload) {
-      if (!payload) return
-      this.currentGroupName = payload.groupName || ''
-      // 从 groups 列表中找到对应的照片
-      if (this.currentGroupName) {
-        const group = this.groups.find(g => g.name === this.currentGroupName)
-        if (group) {
-          this.currentGroupPhoto = group.photoUrl || ''
-        }
+    onCurrentGroupChanged() {
+      this.syncCurrentGroupFromPlan()
+    },
+    syncCurrentGroupFromPlan() {
+      const current = this.currentPlanItem || {}
+      this.currentGroupName = current.teamName || current.teamLeader || ''
+      this.currentTeamLeader = current.teamLeader || ''
+      this.currentQualityInspector = current.qualityInspector || ''
+      this.currentQualityManager = current.qualityManager || ''
+      if (!this.currentGroupName) {
+        this.currentGroupPhoto = ''
+        return
       }
+      const group = this.groups.find(g => g.name === this.currentGroupName)
+      this.currentGroupPhoto = group ? (group.photoUrl || '') : ''
     },
     normalizeAxiosPayload(res) {
       if (res && typeof res === 'object' && 'status' in res && 'headers' in res && 'config' in res) return res.data
@@ -742,34 +749,36 @@ export default {
     },
 
     // ─── 今日检测计划（与主页面联动） ─────────────────────────────────────
-    loadTodayPlan() {
+    async loadTodayPlan() {
       try {
-        const today = new Date().toISOString().slice(0, 10);
-        const projects = JSON.parse(localStorage.getItem('cm_projects') || '[]');
-        const list = [];
-        for (const p of (Array.isArray(projects) ? projects : [])) {
-          for (const c of (p.components || [])) {
-            if (c.planDate === today && c.ifcElementId) {
-              list.push({
-                projectName: p.name || '',
-                projectId: p.id || '',
-                componentName: c.name || '',
-                ifcUrl: c.ifcUrl || p.ifcUrl || '',
-                ifcElementId: c.ifcElementId || '',
-              });
-            }
-          }
+        const res = await fetch('/api/today-plan', { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.success && Array.isArray(data.data)) {
+          this.todayPlanList = data.data.map((item) => ({
+            projectName: item.project || '',
+            projectId: item.projectId || '',
+            componentName: item.componentName || '',
+            ifcUrl: item.ifcUrl || '',
+            ifcElementId: item.ifcElementId || '',
+            teamName: item.teamName || '',
+            teamLeader: item.teamLeader || '',
+            qualityInspector: item.qualityInspector || '',
+            qualityManager: item.qualityManager || '',
+          }));
+          this.currentPlanIndex = 0;
+          this.syncCurrentGroupFromPlan();
+          return;
         }
-        this.todayPlanList = list;
-        this.currentPlanIndex = 0;
-      } catch (e) {
-        this.todayPlanList = [];
-      }
+      } catch (e) { /* ignore */ }
+      this.todayPlanList = [];
+      this.currentPlanIndex = 0;
+      this.syncCurrentGroupFromPlan();
     },
 
     onPlanItemChange({ index }) {
       if (index >= 0 && index < this.todayPlanList.length) {
         this.currentPlanIndex = index;
+        this.syncCurrentGroupFromPlan();
       }
     },
 
@@ -818,12 +827,14 @@ export default {
       }
       if (idx >= 0) {
         this.currentPlanIndex = idx;
+        this.syncCurrentGroupFromPlan();
       }
     },
 
     prevPlan() {
       if (this.currentPlanIndex > 0) {
         this.currentPlanIndex--;
+        this.syncCurrentGroupFromPlan();
         this.emitPlanChange();
       }
     },
@@ -831,6 +842,7 @@ export default {
     nextPlan() {
       if (this.currentPlanIndex < this.todayPlanList.length - 1) {
         this.currentPlanIndex++;
+        this.syncCurrentGroupFromPlan();
         this.emitPlanChange();
       }
     },
@@ -969,8 +981,13 @@ export default {
         const res = await fetch('/api/projects', { headers: getAuthHeaders() });
         const data = await res.json();
         if (data && data.success && Array.isArray(data.data)) {
-          // 找到与当前 IFC URL 关联的项目
-          return data.data.find(p => p.ifcUrl === this.currentIfcUrl) || data.data[0] || null;
+          const normalizeUrl = (u) => {
+            const s = String(u || '').trim();
+            if (!s) return '';
+            return s.replace(/^https?:\/\/[^/]+/i, '').replace(/\/$/, '');
+          };
+          const current = normalizeUrl(this.currentIfcUrl);
+          return data.data.find(p => normalizeUrl(p.ifcUrl) === current) || data.data[0] || null;
         }
       } catch (e) {
         console.error('加载项目数据失败', e);
@@ -1328,6 +1345,16 @@ export default {
       color: #fff;
       font-size: 16px;
       font-weight: bold;
+    }
+
+    .current-group-meta {
+      margin-top: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 11px;
+      line-height: 1.4;
     }
     
     .info-grid {

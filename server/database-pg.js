@@ -1,0 +1,578 @@
+const { Pool } = require('pg');
+
+const pool = new Pool({
+    host: process.env.PGHOST || 'localhost',
+    port: Number(process.env.PGPORT || 5432),
+    database: process.env.PGDATABASE || 'postgres',
+    user: process.env.PGUSER || 'postgres',
+    password: process.env.PGPASSWORD || '',
+});
+
+pool.on('error', (err) => {
+    console.error('[DB] PostgreSQL pool error:', err.message);
+});
+
+async function query(sql, params = []) {
+    try {
+        const result = await pool.query(sql, params);
+        return { success: true, data: result.rows };
+    } catch (err) {
+        console.error('[PG Query Error]', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+async function get(sql, params = []) {
+    const result = await query(sql, params);
+    if (!result.success) return result;
+    return { success: true, data: result.data[0] || null };
+}
+
+async function run(sql, params = []) {
+    try {
+        const result = await pool.query(sql, params);
+        return {
+            success: true,
+            changes: result.rowCount || 0,
+            rows: result.rows || []
+        };
+    } catch (err) {
+        console.error('[PG Run Error]', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+async function transaction(callback) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await callback(client);
+        await client.query('COMMIT');
+        return { success: true, data: result };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[PG Transaction Error]', err.message);
+        return { success: false, error: err.message };
+    } finally {
+        client.release();
+    }
+}
+
+function mapComponentRow(component) {
+    return {
+        id: component.id,
+        name: component.name || '',
+        componentMark: component.component_mark || '',
+        spec: component.spec || '',
+        positionCode: component.position_code || '',
+        bottomElevation: component.bottom_elevation || '',
+        topElevation: component.top_elevation || '',
+        length: component.length_value != null ? Number(component.length_value) : null,
+        width: component.width_value != null ? Number(component.width_value) : null,
+        area: component.area_value != null ? Number(component.area_value) : null,
+        castUnitWeight: component.cast_unit_weight != null ? Number(component.cast_unit_weight) : null,
+        weightNet: component.weight_net != null ? Number(component.weight_net) : null,
+        weightGross: component.weight_gross != null ? Number(component.weight_gross) : null,
+        material: component.material || '',
+        mainReference: component.main_reference || '',
+        teamId: component.team_id || '',
+        teamName: component.team_name || '',
+        teamLeader: component.team_leader || '',
+        selfInspector: component.self_inspector || '',
+        qualityInspector: component.quality_inspector || '',
+        qualityManager: component.quality_manager || '',
+        planDate: component.plan_date || '',
+        status: component.status || '待检测',
+        ifcElementId: component.ifc_element_id || '',
+        ifcGlobalId: component.ifc_global_id || '',
+        ifcType: component.ifc_type || ''
+    };
+}
+
+function mapProjectRow(project, components = []) {
+    return {
+        id: project.id,
+        name: project.name,
+        province: project.province || '',
+        city: project.city || '',
+        ifcUrl: project.ifc_url || '',
+        ifcFilename: project.ifc_filename || '',
+        ifcFileSize: project.ifc_file_size || 0,
+        center: (project.center_lng != null && project.center_lat != null) ? [Number(project.center_lng), Number(project.center_lat)] : null,
+        beamColumnCount: project.beam_column_count || 0,
+        inspectedCount: project.inspected_count || 0,
+        qualifiedCount: project.qualified_count || 0,
+        qualifiedRate: project.qualified_rate || '0%',
+        isActive: !!project.is_active,
+        components
+    };
+}
+
+async function initDatabase() {
+    const statements = [
+        `CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            province TEXT DEFAULT '',
+            city TEXT DEFAULT '',
+            ifc_url TEXT DEFAULT '',
+            ifc_filename TEXT DEFAULT '',
+            ifc_file_size BIGINT DEFAULT 0,
+            center_lat DOUBLE PRECISION,
+            center_lng DOUBLE PRECISION,
+            beam_column_count INTEGER DEFAULT 0,
+            inspected_count INTEGER DEFAULT 0,
+            qualified_count INTEGER DEFAULT 0,
+            qualified_rate TEXT DEFAULT '0%',
+            is_active BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS components (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            name TEXT DEFAULT '',
+            component_mark TEXT DEFAULT '',
+            spec TEXT DEFAULT '',
+            position_code TEXT DEFAULT '',
+            bottom_elevation TEXT DEFAULT '',
+            top_elevation TEXT DEFAULT '',
+            length_value DOUBLE PRECISION,
+            width_value DOUBLE PRECISION,
+            area_value DOUBLE PRECISION,
+            cast_unit_weight DOUBLE PRECISION,
+            weight_net DOUBLE PRECISION,
+            weight_gross DOUBLE PRECISION,
+            material TEXT DEFAULT '',
+            main_reference TEXT DEFAULT '',
+            team_id TEXT DEFAULT '',
+            team_name TEXT DEFAULT '',
+            team_leader TEXT DEFAULT '',
+            self_inspector TEXT DEFAULT '',
+            quality_inspector TEXT DEFAULT '',
+            quality_manager TEXT DEFAULT '',
+            plan_date TEXT,
+            status TEXT DEFAULT '待检测',
+            ifc_element_id TEXT DEFAULT '',
+            ifc_global_id TEXT DEFAULT '',
+            ifc_type TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS project_statistics (
+            project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+            component_count INTEGER DEFAULT 0,
+            inspected_count INTEGER DEFAULT 0,
+            qualified_count INTEGER DEFAULT 0,
+            pending_count INTEGER DEFAULT 0,
+            inspecting_count INTEGER DEFAULT 0,
+            unqualified_count INTEGER DEFAULT 0,
+            qualified_rate TEXT DEFAULT '0.0%',
+            team_count INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS groups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            photo_url TEXT DEFAULT '/people.jpg',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS rankings (
+            id BIGSERIAL PRIMARY KEY,
+            group_id TEXT,
+            group_name TEXT NOT NULL,
+            qualified_rate DOUBLE PRECISION DEFAULT 0,
+            total_count INTEGER DEFAULT 0,
+            qualified_count INTEGER DEFAULT 0,
+            period TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS star (
+            id INTEGER PRIMARY KEY,
+            group_id TEXT,
+            group_name TEXT DEFAULT '',
+            photo_url TEXT DEFAULT '/people.jpg',
+            passing_rate DOUBLE PRECISION DEFAULT 0,
+            first_pass_rate DOUBLE PRECISION DEFAULT 0,
+            photo_updated_at TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `INSERT INTO star (id, group_name, photo_url, passing_rate, first_pass_rate)
+         VALUES (1, '', '/people.jpg', 0, 0)
+         ON CONFLICT (id) DO NOTHING`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS team_id TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS team_name TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS self_inspector TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS position_code TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS bottom_elevation TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS top_elevation TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS length_value DOUBLE PRECISION`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS width_value DOUBLE PRECISION`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS area_value DOUBLE PRECISION`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS cast_unit_weight DOUBLE PRECISION`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS weight_net DOUBLE PRECISION`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS weight_gross DOUBLE PRECISION`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS material TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS main_reference TEXT DEFAULT ''`,
+        `CREATE INDEX IF NOT EXISTS idx_project_statistics_updated ON project_statistics(updated_at)`,
+        `CREATE INDEX IF NOT EXISTS idx_components_project ON components(project_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_components_mark ON components(component_mark)`
+    ];
+    for (const sql of statements) {
+        const res = await run(sql);
+        if (!res.success) throw new Error(res.error);
+    }
+    console.log('[DB] PostgreSQL 数据库初始化完成');
+}
+
+const data = {
+    getAllGroups: () => query('SELECT * FROM groups ORDER BY created_at DESC'),
+    createGroup: (group) => run(
+        `INSERT INTO groups (id, name, photo_url, created_at, updated_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [
+            group.id || `${Date.now()}`,
+            group.name || '',
+            group.photo_url || '/people.jpg'
+        ]
+    ),
+    getStar: () => get('SELECT * FROM star WHERE id = 1'),
+    updateGroup: (id, updates) => {
+        const fields = Object.keys(updates || {});
+        if (!fields.length) return Promise.resolve({ success: false, error: 'No fields to update' });
+        const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+        const values = fields.map((field) => updates[field]);
+        values.push(id);
+        return run(`UPDATE groups SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $${fields.length + 1}`, values);
+    },
+    deleteGroup: (id) => run('DELETE FROM groups WHERE id = $1', [id]),
+    updateStar: (updates) => run(
+        `UPDATE star
+         SET group_id = $1, group_name = $2, photo_url = $3,
+             passing_rate = $4, first_pass_rate = $5,
+             photo_updated_at = $6, updated_at = CURRENT_TIMESTAMP
+         WHERE id = 1`,
+        [
+            updates.group_id || null,
+            updates.group_name || '',
+            updates.photo_url || '/people.jpg',
+            Number(updates.passing_rate || 0),
+            Number(updates.first_pass_rate || 0),
+            updates.photo_updated_at || null
+        ]
+    ),
+    getRankings: async (period = null) => {
+        if (period) {
+            return query(
+                'SELECT * FROM rankings WHERE period = $1 ORDER BY qualified_rate DESC, created_at ASC',
+                [period]
+            );
+        }
+        const latestRes = await get('SELECT period FROM rankings ORDER BY period DESC LIMIT 1');
+        if (!latestRes.success) return latestRes;
+        const latestPeriod = latestRes.data && latestRes.data.period ? latestRes.data.period : null;
+        if (!latestPeriod) {
+            return { success: true, data: [] };
+        }
+        return query(
+            'SELECT * FROM rankings WHERE period = $1 ORDER BY qualified_rate DESC, created_at ASC',
+            [latestPeriod]
+        );
+    },
+    updateRankingsByPeriod: (period, rankings) => transaction(async (client) => {
+        await client.query('DELETE FROM rankings WHERE period = $1', [period]);
+        for (const ranking of (Array.isArray(rankings) ? rankings : [])) {
+            await client.query(
+                `INSERT INTO rankings (
+                    group_id, group_name, qualified_rate, total_count, qualified_count, period, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+                [
+                    ranking.group_id || null,
+                    ranking.group_name || ranking.name || '',
+                    Number(ranking.qualified_rate != null ? ranking.qualified_rate : ranking.value || 0),
+                    Number(ranking.total_count || 0),
+                    Number(ranking.qualified_count || 0),
+                    period
+                ]
+            );
+        }
+    }),
+    getSetting: (key) => get('SELECT * FROM settings WHERE key = $1', [key]),
+    setSetting: (key, value, description = '') => run(
+        `INSERT INTO settings (key, value, description, updated_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+         ON CONFLICT (key) DO UPDATE SET
+             value = EXCLUDED.value,
+             description = EXCLUDED.description,
+             updated_at = CURRENT_TIMESTAMP`,
+        [key, value, description]
+    ),
+    getProjectCount: () => get('SELECT COUNT(*)::int AS count FROM projects'),
+    getProjectById: (id) => get('SELECT * FROM projects WHERE id = $1', [id]),
+    getProjectStatisticsById: (projectId) => get('SELECT * FROM project_statistics WHERE project_id = $1', [projectId]),
+    getActiveProject: () => get('SELECT * FROM projects WHERE is_active = TRUE LIMIT 1'),
+    createProject: (project) => run(
+        `INSERT INTO projects (
+            id, name, province, city, ifc_url, ifc_filename, ifc_file_size,
+            center_lat, center_lng, beam_column_count, inspected_count, qualified_count,
+            qualified_rate, is_active, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+        [
+            project.id,
+            project.name || '',
+            project.province || '',
+            project.city || '',
+            project.ifc_url || '',
+            project.ifc_filename || '',
+            Number(project.ifc_file_size || 0),
+            project.center_lat != null ? Number(project.center_lat) : null,
+            project.center_lng != null ? Number(project.center_lng) : null,
+            Number(project.beam_column_count || 0),
+            Number(project.inspected_count || 0),
+            Number(project.qualified_count || 0),
+            project.qualified_rate || '0%',
+            !!project.is_active
+        ]
+    ),
+    deleteProject: (id) => run('DELETE FROM projects WHERE id = $1', [id]),
+    setActiveProject: (id) => transaction(async (client) => {
+        await client.query('UPDATE projects SET is_active = FALSE');
+        if (id) await client.query('UPDATE projects SET is_active = TRUE WHERE id = $1', [id]);
+    }),
+    getAllProjectsWithComponents: async () => {
+        const projectsRes = await query('SELECT * FROM projects ORDER BY created_at DESC');
+        if (!projectsRes.success) return projectsRes;
+        const componentsRes = await query('SELECT * FROM components ORDER BY created_at DESC');
+        if (!componentsRes.success) return componentsRes;
+        const componentMap = new Map();
+        for (const component of componentsRes.data) {
+            const projectId = String(component.project_id || '');
+            if (!componentMap.has(projectId)) componentMap.set(projectId, []);
+            componentMap.get(projectId).push(mapComponentRow(component));
+        }
+        return {
+            success: true,
+            data: projectsRes.data.map((project) => mapProjectRow(project, componentMap.get(String(project.id)) || []))
+        };
+    },
+    getProjectWithComponentsById: async (id) => {
+        const projectRes = await get('SELECT * FROM projects WHERE id = $1', [id]);
+        if (!projectRes.success || !projectRes.data) return projectRes;
+        const componentsRes = await query('SELECT * FROM components WHERE project_id = $1 ORDER BY created_at DESC', [id]);
+        return {
+            success: true,
+            data: mapProjectRow(projectRes.data, componentsRes.success ? componentsRes.data.map(mapComponentRow) : [])
+        };
+    },
+    createComponent: (component) => run(
+        `INSERT INTO components (
+            id, project_id, name, component_mark, spec, position_code, bottom_elevation, top_elevation,
+            length_value, width_value, area_value, cast_unit_weight, weight_net, weight_gross,
+            material, main_reference, team_id, team_name, team_leader, self_inspector, quality_inspector,
+            quality_manager, plan_date, status, ifc_element_id, ifc_global_id, ifc_type,
+            created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+        [
+            component.id,
+            component.project_id,
+            component.name || '',
+            component.component_mark || '',
+            component.spec || '',
+            component.position_code || '',
+            component.bottom_elevation || '',
+            component.top_elevation || '',
+            component.length_value != null ? Number(component.length_value) : null,
+            component.width_value != null ? Number(component.width_value) : null,
+            component.area_value != null ? Number(component.area_value) : null,
+            component.cast_unit_weight != null ? Number(component.cast_unit_weight) : null,
+            component.weight_net != null ? Number(component.weight_net) : null,
+            component.weight_gross != null ? Number(component.weight_gross) : null,
+            component.material || '',
+            component.main_reference || '',
+            component.team_id || '',
+            component.team_name || '',
+            component.team_leader || '',
+            component.self_inspector || '',
+            component.quality_inspector || '',
+            component.quality_manager || '',
+            component.plan_date || null,
+            component.status || '待检测',
+            component.ifc_element_id || '',
+            component.ifc_global_id || '',
+            component.ifc_type || ''
+        ]
+    ),
+    getComponentsByProject: (projectId) => query(
+        'SELECT * FROM components WHERE project_id = $1 ORDER BY created_at DESC',
+        [projectId]
+    ),
+    getComponentById: (id) => get('SELECT * FROM components WHERE id = $1', [id]),
+    getComponentByProjectAndIfcElementId: (projectId, ifcElementId) => get(
+        `SELECT * FROM components
+         WHERE project_id = $1 AND ifc_element_id = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [projectId, ifcElementId]
+    ),
+    getComponentMarksByProject: (projectId) => query(
+        `SELECT
+            ifc_element_id,
+            component_mark,
+            name,
+            ifc_type,
+            material,
+            spec,
+            main_reference,
+            position_code,
+            bottom_elevation,
+            top_elevation,
+            length_value,
+            width_value,
+            area_value,
+            cast_unit_weight,
+            weight_net,
+            weight_gross
+         FROM components
+         WHERE project_id = $1
+           AND COALESCE(ifc_element_id, '') <> ''
+         ORDER BY created_at DESC`,
+        [projectId]
+    ),
+    getComponentByProjectAndMark: (projectId, componentMark) => get(
+        `SELECT * FROM components
+         WHERE project_id = $1 AND component_mark = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [projectId, componentMark]
+    ),
+    updateComponent: (id, updates) => {
+        const entries = Object.entries(updates || {}).filter(([key]) => key !== 'id');
+        if (!entries.length) return Promise.resolve({ success: false, error: 'No fields to update' });
+        const setClause = entries.map(([key], index) => `${key} = $${index + 1}`).join(', ');
+        const values = entries.map(([, value]) => value);
+        values.push(id);
+        return run(
+            `UPDATE components SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $${entries.length + 1}`,
+            values
+        );
+    },
+    deleteComponent: (id) => run('DELETE FROM components WHERE id = $1', [id]),
+    updateProject: (id, updates) => {
+        const entries = Object.entries(updates || {}).filter(([key]) => key !== 'id');
+        if (!entries.length) return Promise.resolve({ success: false, error: 'No fields to update' });
+        const setClause = entries.map(([key], index) => `${key} = $${index + 1}`).join(', ');
+        const values = entries.map(([, value]) => value);
+        values.push(id);
+        return run(
+            `UPDATE projects SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $${entries.length + 1}`,
+            values
+        );
+    },
+    upsertProjectStatistics: (stats) => run(
+        `INSERT INTO project_statistics (
+            project_id, component_count, inspected_count, qualified_count, pending_count,
+            inspecting_count, unqualified_count, qualified_rate, team_count, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)
+        ON CONFLICT (project_id) DO UPDATE SET
+            component_count = EXCLUDED.component_count,
+            inspected_count = EXCLUDED.inspected_count,
+            qualified_count = EXCLUDED.qualified_count,
+            pending_count = EXCLUDED.pending_count,
+            inspecting_count = EXCLUDED.inspecting_count,
+            unqualified_count = EXCLUDED.unqualified_count,
+            qualified_rate = EXCLUDED.qualified_rate,
+            team_count = EXCLUDED.team_count,
+            updated_at = CURRENT_TIMESTAMP`,
+        [
+            stats.project_id,
+            Number(stats.component_count || 0),
+            Number(stats.inspected_count || 0),
+            Number(stats.qualified_count || 0),
+            Number(stats.pending_count || 0),
+            Number(stats.inspecting_count || 0),
+            Number(stats.unqualified_count || 0),
+            stats.qualified_rate || '0.0%',
+            Number(stats.team_count || 0)
+        ]
+    ),
+    getTodayPlanRows: ({ startDate = null, endDate = null, projectId = null, today = null } = {}) => {
+        const conditions = [];
+        const params = [];
+        if (projectId) {
+            params.push(projectId);
+            conditions.push(`p.id = $${params.length}`);
+        }
+        if (startDate && endDate) {
+            params.push(startDate);
+            params.push(endDate);
+            conditions.push(`COALESCE(c.plan_date, '') >= $${params.length - 1} AND COALESCE(c.plan_date, '') <= $${params.length}`);
+        } else if (today) {
+            params.push(today);
+            conditions.push(`COALESCE(c.plan_date, '') = $${params.length}`);
+        }
+        const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        return query(
+            `SELECT
+                p.id AS project_id,
+                p.name AS project_name,
+                p.province,
+                p.city,
+                p.ifc_url,
+                p.is_active,
+                c.id AS component_id,
+                c.name AS component_name,
+                c.component_mark,
+                c.spec,
+                c.team_id,
+                c.team_name,
+                c.team_leader,
+                c.self_inspector,
+                c.quality_inspector,
+                c.quality_manager,
+                c.plan_date,
+                c.status,
+                c.ifc_element_id,
+                c.ifc_global_id,
+                c.ifc_type
+             FROM components c
+             JOIN projects p ON p.id = c.project_id
+             ${whereClause}
+             ORDER BY p.name ASC, c.name ASC`,
+            params
+        );
+    },
+    getInspectionHistoryRows: (today) => query(
+        `SELECT
+            p.name AS project_name,
+            c.ifc_type,
+            c.component_mark,
+            c.name AS component_name,
+            c.id AS component_id,
+            c.plan_date,
+            c.status
+         FROM components c
+         JOIN projects p ON p.id = c.project_id
+         WHERE
+            (COALESCE(c.plan_date, '') <> '' AND c.plan_date < $1)
+            OR c.status IN ('已完成', '不合格')
+         ORDER BY c.plan_date DESC NULLS LAST, p.name ASC`,
+        [today]
+    ),
+};
+
+module.exports = {
+    db: pool,
+    query,
+    run,
+    get,
+    transaction,
+    data,
+    initDatabase,
+};

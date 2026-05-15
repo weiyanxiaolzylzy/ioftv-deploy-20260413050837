@@ -15,23 +15,17 @@ export default {
       config: {
         showValue: true,
         unit: "%",
-        data: [
-          { name: '一班组', value: 99.2 },
-          { name: '二班组', value: 98.5 },
-          { name: '三班组', value: 97.8 },
-          { name: '四班组', value: 96.5 },
-          { name: '五班组', value: 95.2 },
-          { name: '六班组', value: 94.0 }
-        ],
+        data: [],
         colors: ["#00baff", "#4cc9ff", "#6fe3ff", "#8deaff", "#b2f2ff", "#d1f7ff"]
       },
-      workshopFirstPassRate: 97.5,
+      workshopFirstPassRate: 0,
       themeKey: 0,
       isLightTheme: false
     };
   },
   created() {
     this.handleThemeChange()
+    this.fetchRanking()
   },
   mounted() {
     window.addEventListener('themeChange', this.handleThemeChange);
@@ -40,6 +34,25 @@ export default {
     window.removeEventListener('themeChange', this.handleThemeChange);
   },
   methods: {
+    async fetchRanking() {
+      try {
+        const res = await fetch('/api/ranking')
+        const data = await res.json()
+        if (data && data.success) {
+          this.config = {
+            ...this.config,
+            data: Array.isArray(data.data) ? data.data.slice(0, 6).map((item) => ({
+              name: item.name || '未分配班组',
+              value: Number(item.value || 0)
+            })) : []
+          }
+          this.workshopFirstPassRate = Number(data.workshopFirstPassRate || 0)
+          this.themeKey++
+        }
+      } catch (error) {
+        console.warn('获取班组排名失败', error)
+      }
+    },
     handleThemeChange() {
       const savedTheme = localStorage.getItem('themeMode')
       this.isLightTheme = savedTheme === 'light'
