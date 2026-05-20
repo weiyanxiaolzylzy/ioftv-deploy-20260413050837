@@ -20,32 +20,44 @@
         </div>
         <div class="p-row main-info">
           <div class="p-item main-item">
-            <div class="p-label">项目名称</div>
-            <div class="p-value large-text">{{ activeProject.name }}</div>
-          </div>
-          <div class="p-item main-item">
-            <div class="p-label">项目地</div>
-            <div class="p-value large-text">{{ projectMapLabel(activeProject) || '-' }}</div>
+            <div class="info-line info-line--name">
+              <span class="info-line__label">项目名称：</span>
+              <div class="project-name-marquee" :class="{ 'is-scrolling': shouldScrollProjectName }">
+                <div class="p-value large-text project-name-text" :class="{ 'is-scrolling': shouldScrollProjectName }">
+                  <span>{{ activeProject.name }}</span>
+                  <span v-if="shouldScrollProjectName" class="project-name-text__copy">{{ activeProject.name }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="info-line">
+              <span class="info-line__label">项目地：</span>
+              <span class="p-value large-text info-line__value">{{ projectMapLabel(activeProject) || '-' }}</span>
+            </div>
           </div>
         </div>
-        <div class="p-row">
+        <div class="p-row p-row--metrics">
           <div class="p-item">
-            <div class="p-label">梁柱数量</div>
+            <div class="p-label">构件数量</div>
             <div class="p-value num-font">{{ activeProject.beamColumnCount }}</div>
-            <div class="p-note">装配完成焊接前钢梁、钢柱</div>
           </div>
-          <div class="p-item">
+          <div class="p-item p-item--right">
             <div class="p-label">已检根数</div>
             <div class="p-value num-font">{{ activeProject.inspectedCount }}</div>
           </div>
         </div>
-        <div class="p-row">
+        <div class="p-row p-row--metrics">
           <div class="p-item">
-            <div class="p-label">合格根数</div>
+            <div class="p-label p-label--two-line">
+              <span>一次装配</span>
+              <span>合格数量</span>
+            </div>
             <div class="p-value num-font qualified">{{ activeProject.qualifiedCount }}</div>
           </div>
-          <div class="p-item">
-            <div class="p-label">合格率+</div>
+          <div class="p-item p-item--right">
+            <div class="p-label p-label--two-line">
+              <span>一次装配</span>
+              <span>合格率</span>
+            </div>
             <div class="p-value num-font rate">{{ activeProject.qualifiedRate }}</div>
           </div>
         </div>
@@ -95,60 +107,16 @@
                   >
                     项目构件管理
                   </button>
+                  <button
+                    class="btn-clear-project-data"
+                    @click="clearProjectComponents(p)"
+                    title="清除当前项目的构件、班组指派、计划日期和检测状态数据，保留项目与 IFC 文件"
+                  >
+                    清除当前项目数据
+                  </button>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 批量指派弹窗 -->
-      <div v-if="showBatchAssignModal" class="project-modal">
-        <div class="modal-content batch-modal">
-          <div class="modal-header">
-            <h3>批量指派 — {{ batchAssignProject ? batchAssignProject.name : '' }}</h3>
-            <span class="close-icon" @click="showBatchAssignModal = false">×</span>
-          </div>
-          <div class="modal-body">
-            <div class="batch-tip">已选择 {{ (selectedComponentIds[batchAssignProject && batchAssignProject.id] || []).length }} 个构件</div>
-            <div class="form-item"><label>班组长</label><input v-model="batchAssignForm.teamLeader" placeholder="输入班组长姓名" /></div>
-            <div class="form-item"><label>质检员</label><input v-model="batchAssignForm.qualityInspector" placeholder="输入质检员姓名" /></div>
-            <div class="form-item"><label>质量员</label><input v-model="batchAssignForm.qualityManager" placeholder="输入质量员姓名" /></div>
-            <div class="form-item"><label>检测日期</label><input type="date" v-model="batchAssignForm.planDate" /></div>
-            <div class="form-item"><label>状态</label>
-              <select v-model="batchAssignForm.status">
-                <option value="待检测">待检测</option>
-                <option value="检测中">检测中</option>
-                <option value="合格">合格</option>
-                <option value="不合格">不合格</option>
-              </select>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="cancel-btn" @click="showBatchAssignModal = false">取消</button>
-            <button class="save-btn" @click="confirmBatchAssign">确认指派</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 添加构件弹窗 -->
-      <div v-if="showAddComponentModal" class="project-modal">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>添加构件 — {{ addComponentProject ? addComponentProject.name : '' }}</h3>
-            <span class="close-icon" @click="showAddComponentModal = false">×</span>
-          </div>
-          <div class="modal-body">
-            <div class="form-item"><label>构件名称 *</label><input v-model="newComponent.name" placeholder="如：钢梁 GL-04" /></div>
-            <div class="form-item"><label>规格型号</label><input v-model="newComponent.spec" placeholder="如：H300×150×6×8 / 8.5m" /></div>
-            <div class="form-item"><label>班组长</label><input v-model="newComponent.teamLeader" placeholder="输入班组长姓名" /></div>
-            <div class="form-item"><label>质检员</label><input v-model="newComponent.qualityInspector" placeholder="输入质检员姓名" /></div>
-            <div class="form-item"><label>质量员</label><input v-model="newComponent.qualityManager" placeholder="输入质量员姓名" /></div>
-            <div class="form-item"><label>检测日期</label><input type="date" v-model="newComponent.planDate" /></div>
-          </div>
-          <div class="modal-footer">
-            <button class="cancel-btn" @click="showAddComponentModal = false">取消</button>
-            <button class="save-btn" @click="confirmAddComponent">添加构件</button>
           </div>
         </div>
       </div>
@@ -329,12 +297,6 @@ export default {
       },
       expandedProjectId: null,
       selectedComponentIds: {},
-      showBatchAssignModal: false,
-      batchAssignProject: null,
-      batchAssignForm: { teamLeader: '', qualityInspector: '', qualityManager: '', planDate: '', status: '待检测' },
-      showAddComponentModal: false,
-      addComponentProject: null,
-      newComponent: { name: '', spec: '', teamLeader: '', qualityInspector: '', qualityManager: '', planDate: '' },
       newProjectIfcComponents: [],
       showIfcImportModal: false,
       ifcImportProject: null,
@@ -372,6 +334,10 @@ export default {
       if (!this.addForm.province) return [];
       const cities = this.cityMap[this.addForm.province] || [];
       return cities;
+    },
+    shouldScrollProjectName() {
+      const name = this.activeProject && this.activeProject.name ? String(this.activeProject.name) : '';
+      return name.length > 12;
     },
   },
   created() {
@@ -1204,8 +1170,7 @@ export default {
             this.parsingIfc = true;
           },
         });
-        const elements = result.parse && Array.isArray(result.parse.elements)
-          ? this._normalizeIfcElements(result.parse.elements) : [];
+        const elements = this._normalizeIfcImportElements(result.parse);
         this.addForm.ifcParsedCount = elements.length;
         this.newProjectIfcComponents = this._buildComponentsFromIfcElements(elements);
         if (result.parse && result.parse.fromCache) {
@@ -1248,37 +1213,10 @@ export default {
     openBatchAssign(project) {
       const selected = this.selectedComponentIds[project.id] || [];
       if (selected.length === 0) { this.$Message.warning('请先勾选要指派的构件'); return; }
-      this.batchAssignProject = project;
-      this.batchAssignForm = { teamLeader: '', qualityInspector: '', qualityManager: '', planDate: '', status: '待检测' };
-      this.showBatchAssignModal = true;
+      this.$Message.info('批量指派已迁移到「项目构件管理」页面，请从项目行内入口进入操作');
     },
     confirmBatchAssign() {
-      const pid = this.batchAssignProject.id;
-      const ids = this.selectedComponentIds[pid] || [];
-      const p = this.projects.find(x => x.id === pid);
-      if (!p || !p.components) { this.$Message.error('项目数据异常'); return; }
-      const projIfcUrl = p.ifcUrl || '';
-      p.components.forEach(c => {
-        if (ids.includes(c.id)) {
-          // 已有构件若缺少 ifcUrl，补充项目级 ifcUrl
-          if (!c.ifcUrl && projIfcUrl) c.ifcUrl = projIfcUrl;
-          Object.assign(c, this.batchAssignForm);
-        }
-      });
-      // 只统计已指派的构件（planDate 不为空）
-      const assignedCount = (p.components || []).filter(c => c.planDate && c.planDate.trim() !== '').length;
-      p.beamColumnCount = assignedCount;
-      if (this.activeProjectId === p.id) {
-        this.activeProject = { ...p };
-        this.highlightedProject = p;
-      }
-        this._save();
-      this.showBatchAssignModal = false;
-      this.selectedComponentIds[pid] = [];
-      this.$Message.success(`批量指派成功，已指派 ${ids.length} 个构件`);
-      if (this.$bus) {
-        this.$bus.$emit('project-list-update');
-      }
+      this.$Message.info('批量指派已迁移到「项目构件管理」页面，请从项目行内入口进入操作');
     },
     saveInlineEdit(project, comp) {
       const p = this.projects.find(x => x.id === project.id);
@@ -1298,27 +1236,10 @@ export default {
       }
     },
     openAddComponent(project) {
-      this.addComponentProject = project;
-      this.newComponent = { name: '', spec: '', teamLeader: '', qualityInspector: '', qualityManager: '', planDate: '' };
-      this.showAddComponentModal = true;
+      this.$Message.info('新增构件已迁移到「项目构件管理」页面，请从项目行内入口进入操作');
     },
     confirmAddComponent() {
-      if (!this.newComponent.name) { this.$Message.warning('请输入构件名称'); return; }
-      const p = this.projects.find(x => x.id === this.addComponentProject.id);
-      if (!p) return;
-      if (!p.components) p.components = [];
-      const projIfcUrl = p.ifcUrl || '';
-      p.components.push({ id: Date.now(), ifcUrl: projIfcUrl, ...this.newComponent, status: this.newComponent.status || '待检测' });
-      // 手动添加的构件如果有 planDate，也计入 beamColumnCount
-      const assignedCount = (p.components || []).filter(x => x.planDate && x.planDate.trim() !== '').length;
-      p.beamColumnCount = assignedCount;
-      if (this.activeProjectId === p.id) {
-        this.activeProject = { ...p };
-        this.highlightedProject = p;
-      }
-      this._save();
-      this.showAddComponentModal = false;
-      this.$Message.success('构件添加成功');
+      this.$Message.info('新增构件已迁移到「项目构件管理」页面，请从项目行内入口进入操作');
     },
     deleteComponent(pid, cid) {
       if (!confirm('确定删除该构件吗？')) return;
@@ -1380,6 +1301,32 @@ export default {
         this.$Message.success('删除成功');
       } catch (error) {
         this.$Message.error(error && error.message ? String(error.message) : '删除项目失败');
+      }
+    },
+    async clearProjectComponents(project) {
+      if (!project || !project.id) return;
+      const name = project.name || '当前项目';
+      const first = confirm(`确定清除「${name}」的项目构件数据吗？\n\n将删除该项目下的构件、班组指派、计划日期和检测状态数据，项目本身与 IFC 文件保留。`);
+      if (!first) return;
+      const second = confirm(`请再次确认：清除后需要重新同步 IFC 才能恢复「${name}」的构件列表。是否继续？`);
+      if (!second) return;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/components`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || !data.success) {
+          throw new Error((data && (data.message || data.msg)) ? String(data.message || data.msg) : '清除当前项目数据失败');
+        }
+        await this.fetchProjects();
+        if (this.$bus) {
+          this.$bus.$emit('project-list-update');
+          this.$bus.$emit('component-ifc-sync', { projectId: project.id, project: data.project || project });
+        }
+        this.$Message.success(`已清除 ${Number(data.removed || 0)} 条项目构件数据`);
+      } catch (error) {
+        this.$Message.error(error && error.message ? String(error.message) : '清除当前项目数据失败');
       }
     },
         async confirmAddProject() {
@@ -1475,6 +1422,47 @@ export default {
           mainReference: el && el.mainReference != null ? String(el.mainReference) : ''
         };
       }).filter((x) => x.expressID);
+    },
+    _normalizeIfcImportElements(parse) {
+      const payload = parse || {};
+      const elements = Array.isArray(payload.elements) ? payload.elements : [];
+      const assemblySummaries = Array.isArray(payload.assemblySummaries) ? payload.assemblySummaries : [];
+      const summaryByExpressId = new Map();
+      const summaryByGlobalId = new Map();
+
+      assemblySummaries.forEach((summary) => {
+        const expressID = summary && summary.expressID != null ? String(summary.expressID).trim() : '';
+        const globalId = summary && summary.globalId != null ? String(summary.globalId).trim() : '';
+        if (expressID) summaryByExpressId.set(expressID, summary);
+        if (globalId) summaryByGlobalId.set(globalId, summary);
+      });
+
+      const assemblyElements = elements.filter((el) => String(el && el.type ? el.type : '').trim() === 'IFCELEMENTASSEMBLY');
+      const source = assemblyElements.length ? assemblyElements : assemblySummaries;
+      const merged = source.map((el) => {
+        const expressID = el && el.expressID != null ? String(el.expressID).trim() : '';
+        const globalId = el && el.globalId != null ? String(el.globalId).trim() : '';
+        const summary = summaryByExpressId.get(expressID) || summaryByGlobalId.get(globalId) || el || {};
+        return {
+          ...(el || {}),
+          type: 'IFCELEMENTASSEMBLY',
+          componentMark: summary && summary.componentMark != null ? summary.componentMark : (el && el.componentMark),
+          mainSpec: summary && summary.mainSpec != null ? summary.mainSpec : (el && el.mainSpec),
+          positionCode: summary && summary.positionCode != null ? summary.positionCode : (el && el.positionCode),
+          bottomElevation: summary && summary.bottomElevation != null ? summary.bottomElevation : (el && el.bottomElevation),
+          topElevation: summary && summary.topElevation != null ? summary.topElevation : (el && el.topElevation),
+          length: summary && summary.length != null ? summary.length : (el && el.length),
+          width: summary && summary.width != null ? summary.width : (el && el.width),
+          area: summary && summary.area != null ? summary.area : (el && el.area),
+          castUnitWeight: summary && summary.castUnitWeight != null ? summary.castUnitWeight : (el && el.castUnitWeight),
+          weightNet: summary && summary.weightNet != null ? summary.weightNet : (el && el.weightNet),
+          weightGross: summary && summary.weightGross != null ? summary.weightGross : (el && el.weightGross),
+          material: summary && summary.material != null ? summary.material : (el && el.material),
+          mainReference: summary && summary.mainReference != null ? summary.mainReference : (el && el.mainReference)
+        };
+      });
+
+      return this._normalizeIfcElements(merged);
     },
     _buildComponentsFromIfcElements(elements) {
       return elements.map((el) => {
@@ -1674,7 +1662,7 @@ export default {
         const result = await this._uploadIfcAndWaitForParse(file);
         const url = result.url || '';
         const parse = result.parse || {};
-        const elements = parse && Array.isArray(parse.elements) ? this._normalizeIfcElements(parse.elements) : [];
+        const elements = this._normalizeIfcImportElements(parse);
         if (parse && parse.success && elements.length === 0) {
           const total = parse.total != null ? Number(parse.total) : 0;
           if (total > 0) {
@@ -1841,7 +1829,7 @@ export default {
       background: rgba(0, 30, 60, 0.85);
       border: 1px solid rgba(0, 186, 255, 0.4);
       border-radius: 8px;
-      padding: 12px 16px;
+      padding: 12px 10px;
       z-index: 10;
       min-width: 200px;
       .overlay-badge {
@@ -1865,12 +1853,78 @@ export default {
         0%, 100% { box-shadow: 0 2px 8px rgba(255, 170, 0, 0.5); }
         50% { box-shadow: 0 2px 16px rgba(255, 170, 0, 0.8); }
       }
-      .p-row { display: flex; gap: 16px; margin-bottom: 8px; &.main-info { border-bottom: 1px solid rgba(0,186,255,0.2); padding-bottom: 8px; margin-bottom: 8px; } &:last-child { margin-bottom: 0; } }
+      .p-row { display: flex; gap: 18px; margin-bottom: 8px; &.main-info { display: block; border-bottom: 1px solid rgba(0,186,255,0.2); padding-bottom: 8px; margin-bottom: 8px; } &.p-row--metrics { gap: 34px; } &:last-child { margin-bottom: 0; } }
       .p-item {
-        .p-label { color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+        .p-label { color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 600; margin-bottom: 3px; &.p-label--two-line { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; line-height: 1.2; min-height: 28px; } }
         .p-value { color: #fff; font-size: 16px; font-weight: 800; &.large-text { font-size: 17px; font-weight: 900; } &.qualified { color: #67c23a; } &.rate { color: #409eff; } }
         .num-font { font-family: 'DIN Alternate', 'Helvetica Neue', sans-serif; font-size: 22px; font-weight: 900; }
-        .p-note { color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 3px; }
+        &.main-item {
+          flex: 0 1 auto;
+          min-width: 0;
+          max-width: 260px;
+          .info-line {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+            margin-bottom: 4px;
+            &:last-child {
+              margin-bottom: 0;
+            }
+          }
+          .info-line__label {
+            flex: 0 0 auto;
+            color: rgba(255,255,255,0.68);
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.2;
+          }
+          .info-line__value {
+            flex: 1 1 auto;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+          }
+          .p-value.large-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .project-name-marquee {
+            overflow: hidden;
+            flex: 1 1 auto;
+            min-width: 0;
+            max-width: 206px;
+          }
+          .project-name-text {
+            display: inline-flex;
+            align-items: center;
+            gap: 24px;
+            min-width: 0;
+            white-space: nowrap !important;
+            line-height: 1.2;
+            animation: none;
+            &.is-scrolling {
+              min-width: max-content;
+              animation: project-name-marquee 10s linear infinite;
+            }
+            .project-name-text__copy {
+              padding-right: 8px;
+            }
+          }
+        }
+        &.p-item--right {
+          width: 112px;
+          flex: 0 0 112px;
+          margin-left: auto;
+        }
+      }
+      @keyframes project-name-marquee {
+        0%, 12% { transform: translateX(0); }
+        50% { transform: translateX(calc(-50% - 14px)); }
+        62%, 100% { transform: translateX(calc(-50% - 14px)); }
       }
     }
 
@@ -1987,12 +2041,17 @@ export default {
       .components-panel {
         background: rgba(0, 0, 0, 0.2);
         padding: 10px 12px;
-        .components-toolbar { display: flex; gap: 10px; margin-bottom: 10px; }
+        .components-toolbar { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .btn-ifc-settings {
           background: rgba(73, 231, 194, 0.15); color: #49e7c2; border: 1px solid rgba(73, 231, 194, 0.4);
           padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;
           &:hover:not(:disabled) { background: rgba(73, 231, 194, 0.25); }
           &:disabled { opacity: 0.45; cursor: not-allowed; }
+        }
+        .btn-clear-project-data {
+          background: rgba(245, 108, 108, 0.12); color: #ff9b9b; border: 1px solid rgba(245, 108, 108, 0.55);
+          padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;
+          &:hover { background: rgba(245, 108, 108, 0.22); border-color: #f56c6c; }
         }
         .empty-components { color: #666; font-size: 13px; padding: 10px 0; text-align: center; }
         .components-table-wrap { overflow-x: auto; }

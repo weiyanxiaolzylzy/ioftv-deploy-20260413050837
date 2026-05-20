@@ -16,21 +16,17 @@
                 <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
         </div>
-        <ul class="user_Overview user_Overview--grid">
-            <li class="user_Overview-item" style="color: #00fdfa" @click="scope === 'all' && openEditModal('project')">
+        <ul class="user_Overview user_Overview--grid" :class="{ 'is-single': scope === 'single' }">
+            <li v-if="scope === 'all'" class="user_Overview-item" style="color: #00fdfa">
                 <div v-if="scope === 'all'" class="user_Overview_nums allnum bgdonghua">
                     <dv-digital-flop :config="projectConfig" style="width:100%;height:100%;" />
-                </div>
-                <div v-else class="project_name_card" :title="displayProjectName">
-                    <div class="project_name_card__chip">当前项目</div>
-                    <div class="project_name_card__name">{{ displayProjectName }}</div>
                 </div>
                 <div v-if="scope === 'all'" class="metric_label">
                     <span class="metric_label__line">项目</span>
                     <span class="metric_label__line">数量</span>
                 </div>
             </li>
-            <li class="user_Overview-item" style="color: #07f7a8" @click="openEditModal('detected')">
+            <li class="user_Overview-item" style="color: #07f7a8">
                 <div class="user_Overview_nums online bgdonghua">
                     <dv-digital-flop :config="detectedConfig" style="width:100%;height:100%;" />
                 </div>
@@ -39,7 +35,7 @@
                     <span class="metric_label__line">构件数量</span>
                 </div>
             </li>
-            <li class="user_Overview-item" style="color: #e3b337" @click="openEditModal('firstPass')">
+            <li class="user_Overview-item" style="color: #e3b337">
                 <div class="user_Overview_nums offline bgdonghua">
                     <dv-digital-flop :config="firstPassCountConfig" style="width:100%;height:100%;" />
                 </div>
@@ -48,28 +44,16 @@
                     <span class="metric_label__line">合格数量</span>
                 </div>
             </li>
-            <li class="user_Overview-item" style="color: #f56c6c" @click="openEditModal('passRate')">
+            <li class="user_Overview-item" style="color: #f56c6c">
                 <div class="user_Overview_nums passRate bgdonghua">
                     <dv-digital-flop :config="passRateConfig" style="width:100%;height:100%;" />
                 </div>
                 <div class="metric_label">
-                    <span class="metric_label__line">一次</span>
+                    <span class="metric_label__line">一次装配</span>
                     <span class="metric_label__line">合格率</span>
                 </div>
             </li>
         </ul>
-
-        <!-- Edit Modal -->
-        <div v-if="showModal" class="edit-modal">
-                <div class="modal-content">
-                    <h3>修改{{ currentEditLabel }}</h3>
-                    <input type="number" v-model.number="editValue" class="modal-input" step="0.1" />
-                    <div class="modal-actions">
-                        <button @click="closeModal" class="cancel-btn">取消</button>
-                        <button @click="saveEdit" class="save-btn">保存</button>
-                    </div>
-                </div>
-            </div>
     </div>
 </template>
 
@@ -83,9 +67,6 @@ let style = {
 export default {
     data() {
         return {
-            showModal: false,
-            currentEditType: '',
-            editValue: 0,
             scope: 'all',
             selectedProjectId: '',
             projects: [],
@@ -133,15 +114,6 @@ export default {
             if (this.scope !== 'single') return '';
             const p = this.projects.find(x => String(x.id) === String(this.selectedProjectId));
             return (p && p.name) ? p.name : '—';
-        },
-        currentEditLabel() {
-            switch(this.currentEditType) {
-                case 'project': return '项目数';
-                case 'detected': return '已检测构件数量';
-                case 'firstPass': return '一次装配合格数量';
-                case 'passRate': return '合格率';
-                default: return '';
-            }
         }
     },
   created() {
@@ -340,30 +312,8 @@ export default {
       this.setMetricConfig('detected', stats.inspectedCount);
       this.setMetricConfig('firstPass', stats.qualifiedCount);
       this.setMetricConfig('passRate', stats.rate);
-    },
-        openEditModal(type) {
-            // 暂时禁用手动编辑，或者让手动编辑只在没有数据时生效
-            // 这里为了演示联动，我们可以保留手动编辑作为一种 override，
-            // 但下一次自动更新会覆盖它。
-            this.currentEditType = type;
-            this.showModal = true;
-            
-            switch(type) {
-                case 'project': this.editValue = this.projectConfig.number[0]; break;
-                case 'detected': this.editValue = this.detectedConfig.number[0]; break;
-                case 'firstPass': this.editValue = this.firstPassCountConfig.number[0]; break;
-                case 'passRate': this.editValue = this.passRateConfig.number[0]; break;
-            }
-        },
-        closeModal() {
-            this.showModal = false;
-        },
-        saveEdit() {
-            const newVal = Number(this.editValue);
-            this.setMetricConfig(this.currentEditType, newVal);
-            this.closeModal();
-        }
     }
+        }
 };
 </script>
 
@@ -445,6 +395,10 @@ export default {
         gap: 6px;
         align-items: stretch;
         min-height: 0;
+
+        &.is-single {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
     }
     
     li {
@@ -762,81 +716,4 @@ export default {
     }
 }
 
-/* Edit Modal Styles - Teleport 到 body，居中且不超出视口 */
-.edit-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.72);
-    z-index: 300000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
-    box-sizing: border-box;
-
-    .modal-content {
-        background: #001f3f;
-        padding: 20px;
-        border-radius: 8px;
-        border: 2px solid #00baff;
-        box-shadow: 0 0 20px rgba(0, 186, 255, 0.5);
-        min-width: 300px;
-        max-width: 90vw;
-        text-align: center;
-        color: #fff;
-
-        h3 {
-            margin-bottom: 20px;
-            color: #00baff;
-        }
-
-        .modal-input {
-            width: 80%;
-            padding: 10px;
-            margin-bottom: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid #00baff;
-            color: #fff;
-            border-radius: 4px;
-            font-size: 16px;
-            
-            &:focus {
-                outline: none;
-                background: rgba(255, 255, 255, 0.2);
-            }
-        }
-
-        .modal-actions {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-
-            button {
-                padding: 8px 20px;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-weight: bold;
-                transition: all 0.3s;
-
-                &.cancel-btn {
-                    background: #666;
-                    color: #fff;
-                    &:hover { background: #888; }
-                }
-
-                &.save-btn {
-                    background: #00baff;
-                    color: #fff;
-                    &:hover { background: #009acc; }
-                }
-            }
-        }
-    }
-}
 </style>

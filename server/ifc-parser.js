@@ -283,6 +283,7 @@ async function parseIfcProducts(filePath, limit = 8000) {
                 globalId: normalizeString(assemblyLine.GlobalId),
                 type: reverseTypeName[assemblyLine.type] || String(assemblyLine.type),
                 componentMark: getComponentMark(assemblyId) || null,
+                childExpressIDs: childIds.map((id) => String(id)),
                 positionCode: getPropValue(assemblyId, 'Assembly/Cast unit position code'),
                 bottomElevation: normalizeElevation(getPropValue(assemblyId, 'Assembly/Cast unit bottom elevation')),
                 topElevation: normalizeElevation(getPropValue(assemblyId, 'Assembly/Cast unit top elevation')),

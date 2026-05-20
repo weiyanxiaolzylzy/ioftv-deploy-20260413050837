@@ -118,7 +118,7 @@
     <transition name="popup-fade">
       <div v-if="showElementPopup && focusedElement" class="adv-ifc-popup">
         <div class="popup-header">
-          <span class="popup-title">{{ focusedElement.name || focusedElement.globalId || focusedElement.type || '构件详情' }}</span>
+          <span class="popup-title">{{ getElementDisplayName(focusedElement) || focusedElement.type || '构件详情' }}</span>
           <div class="popup-actions">
             <button class="popup-btn fullscreen-btn" @click="toggleElementFullscreen" title="全屏查看">
               ⛶
@@ -138,7 +138,7 @@
           <div class="element-info">
             <div class="info-row">
               <span class="info-label">名称</span>
-              <span class="info-value">{{ focusedElement.name || '未命名' }}</span>
+              <span class="info-value">{{ getElementDisplayName(focusedElement) || '未命名' }}</span>
             </div>
             <div class="info-row">
               <span class="info-label">GlobalId</span>
@@ -162,7 +162,7 @@
       <div v-if="isElementFullscreen" class="adv-ifc-fullscreen-overlay" @click.self="toggleElementFullscreen">
         <div class="fullscreen-viewer">
           <div class="fullscreen-header">
-            <span>构件 3D 视图 - {{ focusedElement ? (focusedElement.name || focusedElement.globalId) : '' }}</span>
+            <span>构件 3D 视图 - {{ focusedElement ? getElementDisplayName(focusedElement) : '' }}</span>
             <button class="popup-btn close-btn" @click="toggleElementFullscreen">×</button>
           </div>
           <div ref="fullscreenViewerWrap" class="fullscreen-viewer-canvas"></div>
@@ -233,6 +233,15 @@ export default {
     embedMode: {
       type: String,
       default: ''
+    },
+    // iframe 查看器是否优先使用后端数据库构件索引，而不是前端全量解析 IFC
+    useDatabaseIndex: {
+      type: Boolean,
+      default: false
+    },
+    disabledCheckboxIds: {
+      type: Array,
+      default: () => []
     }
   },
   data() {
@@ -319,12 +328,17 @@ export default {
       if (!this.ifcUrl) return '';
       // 主工程已通过 devServer 代理 /ifc 到独立查看器，开发和生产都统一走同源路径。
       const base = `${window.location.origin}/ifc`;
-      let q = `ifcUrl=${encodeURIComponent(this.ifcUrl)}`;
+      const normalizedIfcUrl = String(this.ifcUrl || '').trim();
+      if (!normalizedIfcUrl) return '';
+      let q = `ifcUrl=${encodeURIComponent(normalizedIfcUrl)}`;
       if (this.projectId !== '' && this.projectId !== null && this.projectId !== undefined) {
         q += `&projectId=${encodeURIComponent(String(this.projectId))}`;
       }
       if (this.embedMode) {
         q += `&embed=${encodeURIComponent(this.embedMode)}`;
+      }
+      if (this.useDatabaseIndex) {
+        q += '&dataSource=db';
       }
       return `${base}/?${q}`;
     }
@@ -354,6 +368,13 @@ export default {
         this.postToIframe({ type: 'multi-select-mode', enabled: false });
       } else {
         this.postToIframe({ type: 'multi-select-mode', enabled: true });
+      }
+    },
+    disabledCheckboxIds: {
+      deep: true,
+      handler(ids) {
+        if (!this.useIframeMode) return
+        this.postToIframe({ type: 'disabled-checkbox-ids', ids: Array.isArray(ids) ? ids : [] })
       }
     }
   },
@@ -396,6 +417,9 @@ export default {
       // 同步多选模式状态
       if (this.multiSelectMode) {
         this.postToIframe({ type: 'multi-select-mode', enabled: true });
+      }
+      if (this.disabledCheckboxIds && this.disabledCheckboxIds.length) {
+        this.postToIframe({ type: 'disabled-checkbox-ids', ids: this.disabledCheckboxIds })
       }
     },
     onIframeError() {
@@ -455,6 +479,9 @@ export default {
         }
         case 'error': {
           console.error('[AdvancedIfcViewer iframe error]', data.message);
+          this.iframeReady = false;
+          this.iframeError = true;
+          this.iframeLoadErrorMsg = data.message || 'IFC 模型加载失败';
           this.$emit('viewer-error', data);
           break;
         }
@@ -1171,6 +1198,11 @@ export default {
       return typeof v === 'string' ? v : null;
     },
 
+    getElementDisplayName(element) {
+      if (!element || typeof element !== 'object') return '';
+      return element.componentMark || element.assemblyMark || element.name || element.globalId || String(element.expressID || '');
+    },
+
     // ─── Public API ─────────────────────────────────────────────────────────
     // Clear multi-selection and exit multi-select mode
     clearMultiSelection() {
@@ -1188,7 +1220,7 @@ export default {
     },
 
     // Highlight a specific element by expressID
-    highlightElement(expressID) {
+    highlightElement(expressID, options = {}) {
       if (this.useIframeMode) {
         const id = Number(expressID);
         if (!Number.isFinite(id)) return;
@@ -1196,12 +1228,12 @@ export default {
         this.postToIframe({
           type: 'select-element',
           expressID: id,
-          focus: true,
-          isolateOnly: true
+          focus: options.focus !== false,
+          isolateOnly: options.isolateOnly === true
         });
         return;
       }
-      this.selectElement(expressID, true);
+      this.selectElement(expressID, options.focus !== false);
     },
 
     // Get element info by expressID

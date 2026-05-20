@@ -55,6 +55,17 @@
             text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
         }
     }
+
+    &.camera-theme {
+        background-image: url("../assets/img/beijin2.jpg");
+        background-size: cover;
+        background-position: center center;
+        background-repeat: no-repeat;
+
+        &::before {
+            background: rgba(3, 10, 20, 0.48);
+        }
+    }
 }
 
 .screen-shell .host-body {

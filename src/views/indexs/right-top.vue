@@ -93,6 +93,14 @@ export default {
   created() {
     this.canEdit = canEditFeature('monthly_star');
     this.fetchData();
+    if (this.$bus) {
+      this.$bus.$on('project-list-update', this.fetchData)
+    }
+  },
+  beforeDestroy() {
+    if (this.$bus) {
+      this.$bus.$off('project-list-update', this.fetchData)
+    }
   },
   methods: {
     toggleEdit() {

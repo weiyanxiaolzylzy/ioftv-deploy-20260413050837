@@ -1,0 +1,16 @@
+node_modules
+server/node_modules
+ifc/node_modules
+dist
+dist-steel-qc
+.git
+.idea
+.vscode
+*.log
+.tmp-*
+frontend-*.log
+server-*.log
+tmp-*.log
+storage
+README.md
+docs

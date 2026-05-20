@@ -19,7 +19,7 @@
 
         <div class="d-flex jc-center">
           <div class="title">
-            <span class="title-text">钢结构尺寸检测系统</span>
+            <span class="title-text">钢结构智能检测系统</span>
           </div>
         </div>
         <div class="timers">
@@ -39,8 +39,8 @@
         <div class="nav-item" :class="{ active: currentTab === 'results' }" @click="currentTab = 'results'">
           <span>结果</span>
         </div>
-        <div class="nav-item" :class="{ active: currentTab === 'groups' }" @click="openGroupSettings">
-          <span>班组设置</span>
+        <div class="nav-item" :class="{ active: currentTab === 'defects' }" @click="currentTab = 'defects'">
+          <span>缺陷统计</span>
         </div>
       </div>
 
@@ -56,8 +56,7 @@
           <!-- 结果界面 -->
           <results-view v-if="currentTab === 'results'" />
 
-          <!-- 班组设置界面 -->
-          <group-settings-view v-if="currentTab === 'groups'" @close="currentTab = 'workspace'" />
+          <results-view v-if="currentTab === 'defects'" defect-mode />
         </div>
       </div>
 
@@ -69,7 +68,6 @@
 import WorkspaceView from './workspace-view.vue'
 import ParamsView from './params-view.vue'
 import ResultsView from './results-view.vue'
-import GroupSettingsView from './group-settings-view.vue'
 import ScaleScreen from "@/components/scale-screen/scale-screen.vue";
 import { formatTime } from "../../utils/index.js";
 import { getAuthHeaders, canEditFeature } from '@/utils'
@@ -80,7 +78,6 @@ export default {
     WorkspaceView,
     ParamsView,
     ResultsView,
-    GroupSettingsView,
     ScaleScreen
   },
   data() {
@@ -146,10 +143,7 @@ export default {
       this.sharedParams = { ...this.sharedParams, ...newParams }
     },
     goBack() {
-      window.location.href = '/#/home/index'
-    },
-    openGroupSettings() {
-      this.currentTab = 'groups'
+      this.$router.push('/home/index')
     }
   }
 }
@@ -268,16 +262,18 @@ export default {
   background-size: cover;
   color: transparent;
   height: 50px;
-  line-height: 40px;
+  line-height: 46px;
 
   .title-text {
-    font-size: 32px;
+    display: inline-block;
+    font-size: 40px;
     font-weight: 900;
-    letter-spacing: 5px;
+    letter-spacing: 10px;
     width: 100%;
     background: linear-gradient(92deg, #0072FF 0%, #00EAFF 48.8525390625%, #01AAFF 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    white-space: nowrap;
   }
 }
 

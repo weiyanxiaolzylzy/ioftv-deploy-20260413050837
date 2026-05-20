@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -6,6 +7,12 @@ const cors = require('cors');
 const XLSX = require('xlsx');
 const { fork } = require('child_process');
 const dbApi = require('./database-entry');
+const { buildStableIfcComponentId, findStaleImportedComponentIds } = require('./ifc-sync');
+const {
+    normalizeQcStatus,
+    computeQcActionState,
+    canOutboundWithPendingReinspection
+} = require('./qc-workflow');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8890;
@@ -16,6 +23,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use(cors());
+app.use(compression());
 app.use(express.json());
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -44,11 +52,7 @@ const IFC_PARSE_JOBS = new Map();
 const IFC_PARSE_JOB_TTL_MS = 6 * 60 * 60 * 1000;
 
 function normalizeComponentStatus(status) {
-    const raw = String(status || '').trim();
-    if (!raw) return '待检测';
-    if (raw === '已完成') return '合格';
-    if (raw === '待检测' || raw === '检测中' || raw === '合格' || raw === '不合格') return raw;
-    return raw;
+    return normalizeQcStatus(status);
 }
 
 function findBanzuPhotoUrlByGroupName(groupName) {
@@ -61,6 +65,21 @@ function findBanzuPhotoUrlByGroupName(groupName) {
         return base === normalizedName;
     });
     return matched ? `/banzu/${encodeURIComponent(matched)}` : '';
+}
+
+function appendBanzuVersion(photoUrl) {
+    if (!photoUrl || typeof photoUrl !== 'string' || !photoUrl.startsWith('/banzu/')) return photoUrl || '';
+    try {
+        const cleanUrl = photoUrl.split('?')[0];
+        const fileName = decodeURIComponent(cleanUrl.replace('/banzu/', ''));
+        const filePath = path.join(BANZU_DIR, fileName);
+        if (!fs.existsSync(filePath)) return cleanUrl;
+        const stat = fs.statSync(filePath);
+        const version = stat && stat.mtimeMs ? Math.floor(stat.mtimeMs) : Date.now();
+        return `${cleanUrl}?v=${version}`;
+    } catch (error) {
+        return photoUrl;
+    }
 }
 
 async function syncBanzuPhotoMappings() {
@@ -128,6 +147,51 @@ function finalizeBanzuUpload(file, groupName) {
         }
     }
     return `/banzu/${encodeURIComponent(finalName)}`;
+}
+
+async function refreshQualitySummaries(projectId = null) {
+    const statsRes = projectId ? await recalcProjectStats(projectId) : { success: true };
+    if (!statsRes.success) return statsRes;
+    const summaryRes = await buildComponentDrivenTeamSummary(projectId || null);
+    if (!summaryRes.success) return summaryRes;
+    const starRes = await dbApi.data.getStar();
+    const currentStar = starRes && starRes.success && starRes.data ? starRes.data : null;
+    const topOne = summaryRes.data && Array.isArray(summaryRes.data.ranking) ? summaryRes.data.ranking[0] : null;
+    if (topOne && typeof dbApi.data.updateStar === 'function') {
+        const updateRes = await dbApi.data.updateStar({
+            group_id: topOne.groupId || null,
+            group_name: topOne.groupName || '',
+            photo_url: topOne.photoUrl || '/people.jpg',
+            passing_rate: Number(topOne.qualifiedRate || 0),
+            first_pass_rate: currentStar && currentStar.first_pass_rate != null
+                ? Number(currentStar.first_pass_rate)
+                : 0,
+            photo_updated_at: currentStar && currentStar.photo_updated_at ? currentStar.photo_updated_at : null
+        });
+        if (!updateRes.success) return updateRes;
+    }
+    return { success: true, data: summaryRes.data };
+}
+
+function renameBanzuPhotoByUrl(photoUrl, groupName) {
+    if (!photoUrl || !groupName) return photoUrl || '';
+    try {
+        const currentName = decodeURIComponent(String(photoUrl).split('/').pop() || '');
+        if (!currentName) return photoUrl;
+        const currentPath = path.join(BANZU_DIR, currentName);
+        if (!fs.existsSync(currentPath)) return photoUrl;
+        const nextName = buildBanzuFilename(groupName, currentName);
+        if (nextName === currentName) return `/banzu/${encodeURIComponent(currentName)}`;
+        const nextPath = path.join(BANZU_DIR, nextName);
+        if (fs.existsSync(nextPath)) {
+            fs.unlinkSync(nextPath);
+        }
+        fs.renameSync(currentPath, nextPath);
+        return `/banzu/${encodeURIComponent(nextName)}`;
+    } catch (error) {
+        console.warn('[banzu] 班组照片重命名失败:', error.message);
+        return photoUrl;
+    }
 }
 
 const createIfcParseJob = (filePath, limit = 8000) => {
@@ -214,18 +278,25 @@ function buildImportElementsFromParse(parseResult) {
         if (assemblyGlobalId) summaryByAssemblyGlobalId.set(assemblyGlobalId, summary);
     }
 
-    return elements.map((el) => {
-        const parentAssemblyExpressID = el && el.parentAssemblyExpressID != null ? String(el.parentAssemblyExpressID).trim() : '';
+    const assemblyElements = elements.filter((el) => String(el && el.type ? el.type : '').trim() === 'IFCELEMENTASSEMBLY');
+    const source = assemblyElements.length ? assemblyElements : assemblySummaries;
+
+    return source.map((el) => {
         const elExpressID = el && el.expressID != null ? String(el.expressID).trim() : '';
         const elGlobalId = el && el.globalId ? String(el.globalId).trim() : '';
         const summary = (
-            (parentAssemblyExpressID && summaryByAssemblyExpressId.get(parentAssemblyExpressID)) ||
             (elExpressID && summaryByAssemblyExpressId.get(elExpressID)) ||
             (elGlobalId && summaryByAssemblyGlobalId.get(elGlobalId)) ||
+            el ||
             null
         );
         return {
             ...(el || {}),
+            type: 'IFCELEMENTASSEMBLY',
+            componentMark: (summary && summary.componentMark != null ? summary.componentMark : (el && el.componentMark)) || null,
+            childExpressIDs: Array.isArray(summary && summary.childExpressIDs)
+                ? summary.childExpressIDs.map((id) => String(id))
+                : [],
             mainSpec: summary && summary.mainSpec != null ? summary.mainSpec : '',
             positionCode: summary && summary.positionCode != null ? summary.positionCode : '',
             bottomElevation: summary && summary.bottomElevation != null ? summary.bottomElevation : '',
@@ -240,15 +311,6 @@ function buildImportElementsFromParse(parseResult) {
             mainReference: summary && summary.mainReference != null ? summary.mainReference : ''
         };
     });
-}
-
-function buildStableIfcComponentId(projectId, element) {
-    const rawProjectId = String(projectId || '').trim();
-    const globalId = element && element.globalId ? String(element.globalId).trim() : '';
-    const expressId = element && element.expressID != null ? String(element.expressID).trim() : '';
-    const stableKey = globalId || expressId;
-    if (!rawProjectId || !stableKey) return genCompId();
-    return `ifc_${rawProjectId}_${stableKey}`;
 }
 
 async function importIfcElementsToProject(projectId, elements = []) {
@@ -289,7 +351,15 @@ async function importIfcElementsToProject(projectId, elements = []) {
             main_reference: el && el.mainReference ? String(el.mainReference) : '',
             ifc_element_id: expressId,
             ifc_global_id: el && el.globalId ? String(el.globalId) : '',
-            ifc_type: el && el.type ? String(el.type) : ''
+            ifc_type: el && el.type ? String(el.type) : '',
+            child_ifc_element_ids: JSON.stringify(
+                Array.isArray(el && el.childExpressIDs)
+                    ? el.childExpressIDs.map((id) => String(id)).filter(Boolean)
+                    : []
+            ),
+            parent_assembly_ifc_element_id: el && el.parentAssemblyExpressID != null
+                ? String(el.parentAssemblyExpressID)
+                : ''
         };
 
         const existing = existingByIfcElementId.get(expressId);
@@ -303,7 +373,7 @@ async function importIfcElementsToProject(projectId, elements = []) {
         }
 
         const createRes = await dbApi.data.createComponent({
-            id: buildStableIfcComponentId(projectId, el),
+            id: buildStableIfcComponentId(projectId, el) || genCompId(),
             project_id: projectId,
             ...basePayload,
             team_id: '',
@@ -318,7 +388,7 @@ async function importIfcElementsToProject(projectId, elements = []) {
         if (!createRes.success) {
             return { success: false, status: 500, message: createRes.error || '导入 IFC 构件失败' };
         }
-        existingByIfcElementId.set(expressId, { id: buildStableIfcComponentId(projectId, el) });
+        existingByIfcElementId.set(expressId, { id: buildStableIfcComponentId(projectId, el) || genCompId() });
         added++;
     }
 
@@ -491,7 +561,7 @@ app.get('/api/all-data', async (req, res) => {
         res.json({
             star: {
                 groupId: star && star.group_id ? star.group_id : '',
-                groupName: star && star.group_name ? star.group_name : '一班组',
+                groupName: star && star.group_name ? star.group_name : '',
                 passingRate: star && star.passing_rate != null ? Number(star.passing_rate) : 0,
                 firstPassRate: star && star.first_pass_rate != null ? Number(star.first_pass_rate) : 0,
                 photoUrl: star && star.photo_url ? star.photo_url : '/people.jpg'
@@ -564,7 +634,10 @@ const parseQcTemplate = (filePath) => {
 
     const headerRowIndex = normalized.findIndex((row) => {
         const joined = row.filter(Boolean).join('|');
-        return joined.includes('序号') && joined.includes('项目') && joined.includes('允许偏差');
+        const hasSeq = joined.includes('序号');
+        const hasItem = joined.includes('项目') || joined.includes('要求');
+        const hasMeasureHint = joined.includes('允许偏差') || joined.includes('检验数据') || joined.includes('实测值') || joined.includes('备注');
+        return hasSeq && hasItem && hasMeasureHint;
     });
 
     const title = (normalized[0] && normalized[0].find(Boolean)) || path.basename(filePath);
@@ -598,24 +671,40 @@ const parseQcTemplate = (filePath) => {
         return idx >= 0 ? idx : 0;
     })();
     const itemCol = (() => {
-        const idx = findCol(headerRow, (t) => safeCellText(t).includes('项目'));
+        const idx = findCol(headerRow, (t) => {
+            const s = safeCellText(t);
+            return s.includes('项目') || s.includes('要求');
+        });
         return idx >= 0 ? idx : 1;
+    })();
+    const designCol = (() => {
+        const idx = findCol(headerRow, (t) => {
+            const s = safeCellText(t);
+            return (s.includes('设计') || s.includes('理论')) && (s.includes('尺寸') || s.includes('值'));
+        });
+        return idx;
     })();
     const toleranceCol = (() => {
         const idx = findCol(headerRow, (t) => {
             const s = safeCellText(t);
             return s.includes('允许') && s.includes('偏差');
         });
-        return idx >= 0 ? idx : 2;
+        return idx >= 0 ? idx : -1;
+    })();
+    const remarkCol = (() => {
+        const idx = findCol(headerRow, (t) => safeCellText(t).includes('备注'));
+        return idx;
     })();
 
     for (let i = headerRowIndex + 1; i < normalized.length; i++) {
         const row = normalized[i] || [];
         const seq = row[seqCol];
         const itemName = row[itemCol];
-        const toleranceText = row[toleranceCol];
+        const designValue = designCol >= 0 ? row[designCol] : '';
+        const toleranceText = toleranceCol >= 0 ? row[toleranceCol] : '';
+        const remarkText = remarkCol >= 0 ? row[remarkCol] : '';
 
-        const hasAny = [seq, itemName, toleranceText].some((v) => v !== undefined && v !== null && String(v).trim() !== '');
+        const hasAny = [seq, itemName, designValue, toleranceText, remarkText].some((v) => v !== undefined && v !== null && String(v).trim() !== '');
         if (!hasAny) continue;
 
         const seqText = safeCellText(seq);
@@ -625,10 +714,14 @@ const parseQcTemplate = (filePath) => {
             current = {
                 seq: Number(seqText),
                 name: safeCellText(itemName),
-                toleranceTexts: []
+                designValue: safeCellText(designValue),
+                toleranceTexts: [],
+                remark: safeCellText(remarkText)
             };
             if (safeCellText(toleranceText) !== '') {
                 current.toleranceTexts.push(safeCellText(toleranceText));
+            } else if (safeCellText(itemName) !== '') {
+                current.toleranceTexts.push(safeCellText(itemName));
             }
             items.push(current);
             continue;
@@ -640,6 +733,12 @@ const parseQcTemplate = (filePath) => {
             current.toleranceTexts.push(safeCellText(toleranceText));
         } else if (safeCellText(itemName) !== '') {
             current.toleranceTexts.push(safeCellText(itemName));
+        }
+        if (!current.designValue && safeCellText(designValue) !== '') {
+            current.designValue = safeCellText(designValue);
+        }
+        if (!current.remark && safeCellText(remarkText) !== '') {
+            current.remark = safeCellText(remarkText);
         }
     }
 
@@ -683,6 +782,43 @@ const loadQcTemplates = () => {
 app.get('/api/qc-templates', (req, res) => {
     const templates = loadQcTemplates();
     res.json({ success: true, data: templates });
+});
+
+app.post('/api/qc-templates/custom', requireRole(['admin', 'operator']), (req, res) => {
+    try {
+        const body = req.body || {};
+        const title = String(body.title || '').trim();
+        const items = Array.isArray(body.items) ? body.items : [];
+        if (!title) {
+            return res.status(400).json({ success: false, message: '模板名称不能为空' });
+        }
+        if (!items.length) {
+            return res.status(400).json({ success: false, message: '模板至少需要一条检测项' });
+        }
+        const normalizedItems = items.map((item, idx) => ({
+            seq: item.seq || idx + 1,
+            name: String(item.name || '').trim(),
+            designValue: item.designValue == null ? '' : String(item.designValue).trim(),
+            toleranceTexts: Array.isArray(item.toleranceTexts)
+                ? item.toleranceTexts.map((v) => String(v || '').trim()).filter(Boolean)
+                : [String(item.toleranceText || '').trim()].filter(Boolean),
+            remark: item.remark == null ? '' : String(item.remark).trim()
+        })).filter((item) => item.name);
+        if (!normalizedItems.length) {
+            return res.status(400).json({ success: false, message: '模板检测项不能为空' });
+        }
+        const template = {
+            id: `custom:${Date.now()}`,
+            fileName: '',
+            title,
+            sheetName: '自定义模板',
+            isCustom: true,
+            items: normalizedItems
+        };
+        res.json({ success: true, data: template });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
 const resolveQcTemplatePath = (templateId) => {
@@ -758,6 +894,77 @@ app.get('/api/qc-templates/:id/download', (req, res) => {
         return res.sendFile(fullPath);
     } catch (e) {
         return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/demo/ifc-bounds', async (req, res) => {
+    try {
+        const filePath = path.resolve(__dirname, '..', '3#JFGKL-15.ifc');
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, message: '演示 IFC 文件不存在' });
+        }
+        const { IfcAPI } = require('web-ifc');
+        const api = new IfcAPI();
+        await api.Init();
+        const buffer = await fs.promises.readFile(filePath);
+        const modelID = api.OpenModel(new Uint8Array(buffer));
+        try {
+            const meshes = api.LoadAllGeometry(modelID);
+            let minX = Infinity, minY = Infinity, minZ = Infinity;
+            let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+            const updateBoundsFromPlacedGeometry = (placedGeometry) => {
+                const geometry = api.GetGeometry(modelID, placedGeometry.geometryExpressID);
+                const vertexData = api.GetVertexArray(geometry.GetVertexData(), geometry.GetVertexDataSize());
+                const matrix = placedGeometry.flatTransformation || placedGeometry.transformation;
+                const m = Array.isArray(matrix) || ArrayBuffer.isView(matrix) ? Array.from(matrix) : null;
+                if (!m || m.length !== 16) return;
+                for (let i = 0; i < vertexData.length; i += 6) {
+                    const x = vertexData[i];
+                    const y = vertexData[i + 1];
+                    const z = vertexData[i + 2];
+                    const wx = m[0] * x + m[4] * y + m[8] * z + m[12];
+                    const wy = m[1] * x + m[5] * y + m[9] * z + m[13];
+                    const wz = m[2] * x + m[6] * y + m[10] * z + m[14];
+                    if (wx < minX) minX = wx;
+                    if (wy < minY) minY = wy;
+                    if (wz < minZ) minZ = wz;
+                    if (wx > maxX) maxX = wx;
+                    if (wy > maxY) maxY = wy;
+                    if (wz > maxZ) maxZ = wz;
+                }
+            };
+
+            for (let i = 0; i < meshes.size(); i++) {
+                const mesh = meshes.get(i);
+                const placedGeometries = mesh.geometries;
+                for (let j = 0; j < placedGeometries.size(); j++) {
+                    updateBoundsFromPlacedGeometry(placedGeometries.get(j));
+                }
+            }
+
+            if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+                return res.status(500).json({ success: false, message: '无法提取 IFC 包围盒' });
+            }
+
+            const size = {
+                x: Number((maxX - minX).toFixed(3)),
+                y: Number((maxY - minY).toFixed(3)),
+                z: Number((maxZ - minZ).toFixed(3)),
+            };
+            const center = {
+                x: Number(((minX + maxX) / 2).toFixed(3)),
+                y: Number(((minY + maxY) / 2).toFixed(3)),
+                z: Number(((minZ + maxZ) / 2).toFixed(3)),
+            };
+
+            return res.json({ success: true, data: { file: '3#JFGKL-15.ifc', size, center } });
+        } finally {
+            try { api.CloseModel(modelID); } catch (_) {}
+        }
+    } catch (error) {
+        console.error('[demo/ifc-bounds] failed:', error);
+        return res.status(500).json({ success: false, message: error.message || '演示 IFC 解析失败' });
     }
 });
 
@@ -995,9 +1202,9 @@ app.get('/api/star', async (req, res) => {
         const star = starRes && starRes.success && starRes.data ? starRes.data : null;
         res.json({
             groupId: star && star.group_id ? star.group_id : '',
-            groupName: star && star.group_name ? star.group_name : '一班组',
-            passingRate: star && star.passing_rate != null ? Number(star.passing_rate) : 98,
-            firstPassRate: star && star.first_pass_rate != null ? Number(star.first_pass_rate) : 95,
+            groupName: star && star.group_name ? star.group_name : '',
+            passingRate: star && star.passing_rate != null ? Number(star.passing_rate) : 0,
+            firstPassRate: star && star.first_pass_rate != null ? Number(star.first_pass_rate) : 0,
             photoUrl: star && star.photo_url ? star.photo_url : '/people.jpg'
         });
     } catch (e) {
@@ -1016,7 +1223,7 @@ app.post('/api/star', requireRole(['admin', 'operator']), banzuUploadMiddleware,
         const rawPhotoUrl = req.body.photoUrl;
         const groupName = rawGroupName && rawGroupName !== 'undefined' && rawGroupName !== 'null'
             ? String(rawGroupName).trim()
-            : (currentStar && currentStar.group_name ? currentStar.group_name : '一班组');
+            : (currentStar && currentStar.group_name ? currentStar.group_name : '');
         const group = groups.find((g) => String(g.name).trim() === groupName);
 
         let photoUrl = currentStar && currentStar.photo_url ? currentStar.photo_url : '/people.jpg';
@@ -1028,7 +1235,7 @@ app.post('/api/star', requireRole(['admin', 'operator']), banzuUploadMiddleware,
             photoUrl = group.photo_url;
         }
 
-        let passingRate = currentStar && currentStar.passing_rate != null ? Number(currentStar.passing_rate) : 98;
+        let passingRate = currentStar && currentStar.passing_rate != null ? Number(currentStar.passing_rate) : 0;
         if (req.body.passingRate != null && req.body.passingRate !== 'undefined' && req.body.passingRate !== 'null') {
             const rate = Number(req.body.passingRate);
             if (!Number.isNaN(rate)) {
@@ -1041,7 +1248,7 @@ app.post('/api/star', requireRole(['admin', 'operator']), banzuUploadMiddleware,
             group_id: group ? group.id : (currentStar && currentStar.group_id ? currentStar.group_id : null),
             photo_url: photoUrl,
             passing_rate: passingRate,
-            first_pass_rate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 95,
+            first_pass_rate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 0,
             photo_updated_at: new Date().toISOString()
         });
         if (!updateStarRes.success) throw new Error(updateStarRes.error || '更新标兵失败');
@@ -1079,7 +1286,7 @@ app.post('/api/star', requireRole(['admin', 'operator']), banzuUploadMiddleware,
                 groupId: group ? group.id : '',
                 groupName,
                 passingRate,
-                firstPassRate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 95,
+                firstPassRate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 0,
                 photoUrl
             }
         });
@@ -1121,7 +1328,7 @@ app.get('/api/ranking', async (req, res) => {
             : [];
         const workshopFirstPassRate = workshopRateRes && workshopRateRes.success && workshopRateRes.data
             ? Number(workshopRateRes.data.value || 0)
-            : 97.5;
+            : 0;
         res.json({ success: true, data: ranking, workshopFirstPassRate });
     } catch (error) {
         console.error('Error in GET /api/ranking:', error);
@@ -1181,7 +1388,7 @@ app.post('/api/ranking', requireRole(['admin', 'operator']), async (req, res) =>
                 group_id: topGroup ? topGroup.id : null,
                 photo_url: topGroup && topGroup.photo_url ? topGroup.photo_url : (currentStar && currentStar.photo_url ? currentStar.photo_url : '/people.jpg'),
                 passing_rate: Number(topOne.qualified_rate || 0),
-                first_pass_rate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 95,
+                first_pass_rate: currentStar && currentStar.first_pass_rate != null ? Number(currentStar.first_pass_rate) : 0,
                 photo_updated_at: currentStar && currentStar.photo_updated_at ? currentStar.photo_updated_at : null
             });
             if (!starUpdateRes.success) throw new Error(starUpdateRes.error || '更新标兵失败');
@@ -1193,7 +1400,7 @@ app.post('/api/ranking', requireRole(['admin', 'operator']), async (req, res) =>
             data: normalized.map((it) => ({ name: it.group_name, value: it.qualified_rate })),
             workshopFirstPassRate: workshopRateRes && workshopRateRes.success && workshopRateRes.data
                 ? Number(workshopRateRes.data.value || 0)
-                : 97.5
+                : 0
         });
     } catch (error) {
         console.error('Error in POST /api/ranking:', error);
@@ -1228,6 +1435,10 @@ app.get('/api/today-plan', async (req, res) => {
             type: row.ifc_type || (row.component_name || '').split(' ')[0],
             status: normalizeComponentStatus(row.status),
             planDate: row.plan_date || '',
+            qcResult: row.qc_result || '',
+            qualifiedAt: row.qualified_at || '',
+            outboundAt: row.outbound_at || '',
+            qcLocked: !!row.qc_locked,
             count: 1,
             ifcUrl: row.ifc_url || '',
             ifcElementId: row.ifc_element_id || '',
@@ -1259,6 +1470,150 @@ app.get('/api/inspection-history', async (req, res) => {
     } catch (e) {
         console.error('GET /api/inspection-history', e);
         res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/qc/reinspection-tasks', async (req, res) => {
+    try {
+        const rowsRes = await dbApi.data.getReinspectionTasks({
+            projectId: req.query.projectId ? String(req.query.projectId) : null
+        });
+        if (!rowsRes.success) {
+            return res.status(500).json({ success: false, message: rowsRes.error || '获取复检任务失败' });
+        }
+        const data = (rowsRes.data || []).map((row) => ({
+            id: row.id,
+            projectId: row.project_id,
+            componentId: row.component_id,
+            componentMark: row.component_mark || '',
+            teamName: row.team_name || '',
+            inspectionDate: row.inspection_date || '',
+            reinspectionDate: row.reinspection_date || '',
+            failedItems: (() => {
+                try { return JSON.parse(row.failed_items_json || '[]'); } catch (e) { return []; }
+            })(),
+            defectTypes: (() => {
+                try { return JSON.parse(row.defect_types_json || '[]'); } catch (e) { return []; }
+            })(),
+            status: row.status || '待复检'
+        }));
+        res.json({ success: true, data });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/qc/reinspection', requireRole(['admin', 'operator']), async (req, res) => {
+    try {
+        const { projectId, componentId, reinspectionDate, rows, inspectionDate } = req.body || {};
+        if (!projectId || !componentId) {
+            return res.status(400).json({ success: false, message: '缺少项目或构件信息' });
+        }
+        const componentRes = await dbApi.data.getComponentById(componentId);
+        if (!componentRes.success || !componentRes.data) {
+            return res.status(404).json({ success: false, message: '构件不存在' });
+        }
+        const actionState = computeQcActionState(rows || []);
+        if (!actionState.hasNg) {
+            return res.status(400).json({ success: false, message: '当前无不合格项，无需安排复检' });
+        }
+        const component = componentRes.data;
+        const taskId = `reinspect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const createRes = await dbApi.data.createReinspectionTask({
+            id: taskId,
+            project_id: projectId,
+            component_id: componentId,
+            component_mark: component.component_mark || component.name || '',
+            team_name: component.team_name || '',
+            inspection_date: inspectionDate || getTodayStr(),
+            reinspection_date: reinspectionDate || '',
+            failed_items_json: JSON.stringify(actionState.ngRows),
+            defect_types_json: JSON.stringify(actionState.defectStats),
+            status: '待复检'
+        });
+        if (!createRes.success) {
+            return res.status(500).json({ success: false, message: createRes.error || '创建复检任务失败' });
+        }
+        const updateRes = await dbApi.data.updateComponent(componentId, {
+            status: '待复检',
+            qc_result: '不合格',
+            reinspection_count: Number(component.reinspection_count || 0) + 1,
+            qc_locked: true
+        });
+        if (!updateRes.success) {
+            return res.status(500).json({ success: false, message: updateRes.error || '更新构件状态失败' });
+        }
+        const refreshRes = await refreshQualitySummaries(projectId);
+        if (!refreshRes.success) {
+            return res.status(500).json({ success: false, message: refreshRes.error || '统计更新失败' });
+        }
+        res.json({ success: true, id: taskId });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/qc/outbound', requireRole(['admin', 'operator']), async (req, res) => {
+    try {
+        const { projectId, componentId, rows, inspectionDate, reportSnapshot } = req.body || {};
+        if (!projectId || !componentId) {
+            return res.status(400).json({ success: false, message: '缺少项目或构件信息' });
+        }
+        const componentRes = await dbApi.data.getComponentById(componentId);
+        if (!componentRes.success || !componentRes.data) {
+            return res.status(404).json({ success: false, message: '构件不存在' });
+        }
+        const actionState = computeQcActionState(rows || []);
+        if (!actionState.allPassed) {
+            return res.status(400).json({ success: false, message: '存在不合格项，不能出库' });
+        }
+        const tasksRes = typeof dbApi.data.getReinspectionTasksByComponentId === 'function'
+            ? await dbApi.data.getReinspectionTasksByComponentId(componentId)
+            : { success: true, data: [] };
+        if (!tasksRes.success) {
+            return res.status(500).json({ success: false, message: tasksRes.error || '查询复检任务失败' });
+        }
+        if (!canOutboundWithPendingReinspection(tasksRes.data || [])) {
+            return res.status(400).json({ success: false, message: '该构件仍有待复检任务，不能直接出库' });
+        }
+        const component = componentRes.data;
+        const outboundDate = getTodayStr();
+        const outboundId = `outbound-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const createRes = await dbApi.data.createOutboundRecord({
+            id: outboundId,
+            project_id: projectId,
+            component_id: componentId,
+            component_mark: component.component_mark || component.name || '',
+            team_name: component.team_name || '',
+            team_leader: component.team_leader || '',
+            quality_inspector: component.quality_inspector || '',
+            quality_manager: component.quality_manager || '',
+            inspection_date: inspectionDate || outboundDate,
+            outbound_date: outboundDate,
+            report_snapshot_json: JSON.stringify(reportSnapshot || {}),
+            status: '已出库'
+        });
+        if (!createRes.success) {
+            return res.status(500).json({ success: false, message: createRes.error || '创建出库记录失败' });
+        }
+        const updateRes = await dbApi.data.updateComponent(componentId, {
+            status: '已出库',
+            qc_result: '合格',
+            qualified_at: inspectionDate || outboundDate,
+            outbound_at: outboundDate,
+            qc_locked: true,
+            first_pass_qualified: Number(component.reinspection_count || 0) === 0
+        });
+        if (!updateRes.success) {
+            return res.status(500).json({ success: false, message: updateRes.error || '更新构件状态失败' });
+        }
+        const refreshRes = await refreshQualitySummaries(projectId);
+        if (!refreshRes.success) {
+            return res.status(500).json({ success: false, message: refreshRes.error || '统计更新失败' });
+        }
+        res.json({ success: true, id: outboundId, outboundDate, inspectionDate: inspectionDate || outboundDate });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -1331,6 +1686,57 @@ app.post('/api/today-plan', requireRole(['admin', 'operator']), async (req, res)
     }
 });
 
+app.delete('/api/today-plan/:projectId/:componentId', requireRole(['admin', 'operator']), async (req, res) => {
+    try {
+        const { projectId, componentId } = req.params;
+        if (!projectId || !componentId) {
+            return res.status(400).json({ success: false, message: '参数缺失' });
+        }
+        const updateRes = await dbApi.data.updateComponent(componentId, {
+            plan_date: '',
+            status: '待检测'
+        });
+        if (!updateRes.success) {
+            return res.status(500).json({ success: false, message: updateRes.error || '删除检测计划失败' });
+        }
+        const statsRes = await recalcProjectStats(projectId);
+        if (!statsRes.success) {
+            return res.status(500).json({ success: false, message: statsRes.error || '项目统计更新失败' });
+        }
+        const today = getTodayStr();
+        const rowsRes = await dbApi.data.getTodayPlanRows({ today });
+        if (!rowsRes.success) {
+            return res.status(500).json({ success: false, message: rowsRes.error || '读取今日计划失败' });
+        }
+        const data = (rowsRes.data || []).map((row) => ({
+            project: row.project_name,
+            projectId: row.project_id,
+            componentId: row.component_id,
+            componentName: row.component_mark || row.component_name,
+            componentMark: row.component_mark || '',
+            spec: row.spec || '',
+            team: row.team_leader || '',
+            teamName: row.team_name || '',
+            inspector: row.quality_inspector || '',
+            manager: row.quality_manager || '',
+            selfInspector: row.self_inspector || '',
+            location: `${row.province || ''}${row.city || ''}`,
+            type: row.ifc_type || (row.component_name || '').split(' ')[0],
+            status: normalizeComponentStatus(row.status),
+            planDate: row.plan_date || '',
+            count: 1,
+            ifcUrl: row.ifc_url || '',
+            ifcElementId: row.ifc_element_id || '',
+            ifcGlobalId: row.ifc_global_id || '',
+            teamId: row.team_id || ''
+        }));
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Error in DELETE /api/today-plan/:projectId/:componentId:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 获取班组列表
 app.get('/api/groups', async (req, res) => {
     try {
@@ -1339,7 +1745,7 @@ app.get('/api/groups', async (req, res) => {
         res.json((result.data || []).map((g) => ({
             id: g.id,
             name: g.name,
-            photoUrl: g.photo_url || '/people.jpg'
+            photoUrl: appendBanzuVersion(g.photo_url || '/people.jpg')
         })));
     } catch (e) {
         res.status(500).json({ success: false, message: e.message });
@@ -1370,7 +1776,7 @@ app.post('/api/groups', requireRole(['admin', 'operator']), banzuUploadMiddlewar
             data: (listRes.data || []).map((g) => ({
                 id: g.id,
                 name: g.name,
-                photoUrl: g.photo_url || '/people.jpg'
+                photoUrl: appendBanzuVersion(g.photo_url || '/people.jpg')
             }))
         });
     } catch (error) {
@@ -1391,7 +1797,7 @@ app.delete('/api/groups/:id', requireRole(['admin', 'operator']), async (req, re
             data: (listRes.data || []).map((g) => ({
                 id: g.id,
                 name: g.name,
-                photoUrl: g.photo_url || '/people.jpg'
+                photoUrl: appendBanzuVersion(g.photo_url || '/people.jpg')
             }))
         });
     } catch (error) {
@@ -1413,6 +1819,9 @@ app.put('/api/groups/:id', requireRole(['admin', 'operator']), banzuUploadMiddle
         if (req.body.name) updates.name = String(req.body.name).trim();
         if (req.file) updates.photo_url = finalizeBanzuUpload(req.file, updates.name || current.name);
         else if (req.body.photoUrl) updates.photo_url = String(req.body.photoUrl).trim();
+        else if (updates.name && updates.name !== current.name && current.photo_url) {
+            updates.photo_url = renameBanzuPhotoByUrl(current.photo_url, updates.name);
+        }
         const updateRes = await dbApi.data.updateGroup(req.params.id, updates);
         if (!updateRes.success) throw new Error(updateRes.error || '更新班组失败');
         const refreshedRes = await dbApi.data.getAllGroups();
@@ -1423,7 +1832,7 @@ app.put('/api/groups/:id', requireRole(['admin', 'operator']), banzuUploadMiddle
             data: refreshed ? {
                 id: refreshed.id,
                 name: refreshed.name,
-                photoUrl: refreshed.photo_url || '/people.jpg'
+                photoUrl: appendBanzuVersion(refreshed.photo_url || '/people.jpg')
             } : null
         });
     } catch (error) {
@@ -1459,6 +1868,12 @@ function mapDbComponentToApi(component) {
         qualityManager: component.qualityManager || component.quality_manager || '',
         planDate: component.planDate || component.plan_date || '',
         status: normalizeComponentStatus(component.status),
+        qcResult: component.qcResult || component.qc_result || '',
+        firstPassQualified: !!(component.firstPassQualified || component.first_pass_qualified),
+        qualifiedAt: component.qualifiedAt || component.qualified_at || '',
+        outboundAt: component.outboundAt || component.outbound_at || '',
+        reinspectionCount: component.reinspectionCount != null ? Number(component.reinspectionCount) : (component.reinspection_count != null ? Number(component.reinspection_count) : 0),
+        qcLocked: !!(component.qcLocked || component.qc_locked),
         ifcElementId: component.ifcElementId || component.ifc_element_id || '',
         ifcGlobalId: component.ifcGlobalId || component.ifc_global_id || '',
         ifcType: component.ifcType || component.ifc_type || ''
@@ -1477,8 +1892,8 @@ async function recalcProjectStats(projectId) {
     const beamColumnCount = components.length;
     const pendingCount = components.filter((c) => c.status === '待检测').length;
     const inspectingCount = components.filter((c) => c.status === '检测中').length;
-    const qualifiedCount = components.filter((c) => c.status === '合格').length;
-    const unqualifiedCount = components.filter((c) => c.status === '不合格').length;
+    const qualifiedCount = components.filter((c) => c.status === '已出库' || c.status === '复检完成待出库').length;
+    const unqualifiedCount = components.filter((c) => c.status === '待复检').length;
     const inspectedCount = qualifiedCount + unqualifiedCount;
     const qualifiedRate = inspectedCount > 0 ? `${((qualifiedCount / inspectedCount) * 100).toFixed(1)}%` : '0.0%';
     const teamCount = new Set(
@@ -1585,11 +2000,11 @@ async function buildComponentDrivenTeamSummary(projectId = null) {
             if (!bucket.qualityInspector && component.qualityInspector) bucket.qualityInspector = String(component.qualityInspector).trim();
             if (!bucket.qualityManager && component.qualityManager) bucket.qualityManager = String(component.qualityManager).trim();
 
-            if (component.status === '合格') {
+            if (component.status === '已出库' || component.status === '复检完成待出库') {
                 bucket.qualifiedCount += 1;
                 totalQualified += 1;
                 totalReviewed += 1;
-            } else if (component.status === '不合格') {
+            } else if (component.status === '待复检') {
                 bucket.unqualifiedCount += 1;
                 totalReviewed += 1;
             } else if (component.status === '检测中') {
@@ -1767,6 +2182,17 @@ app.get('/api/projects/:id/components/marks', async (req, res) => {
                 componentMark: row && row.component_mark ? String(row.component_mark) : '',
                 name: row && row.name ? String(row.name) : '',
                 ifcType: row && row.ifc_type ? String(row.ifc_type) : '',
+                childExpressIDs: (() => {
+                    try {
+                        const parsed = JSON.parse(row && row.child_ifc_element_ids ? String(row.child_ifc_element_ids) : '[]');
+                        return Array.isArray(parsed) ? parsed.map((id) => String(id)) : [];
+                    } catch (error) {
+                        return [];
+                    }
+                })(),
+                parentAssemblyExpressID: row && row.parent_assembly_ifc_element_id != null
+                    ? String(row.parent_assembly_ifc_element_id)
+                    : '',
                 material: row && row.material ? String(row.material) : '',
                 spec: row && row.spec ? String(row.spec) : '',
                 mainReference: row && row.main_reference ? String(row.main_reference) : '',
@@ -1840,6 +2266,19 @@ app.post('/api/projects/:id/components/sync-ifc', requireRole(['admin', 'operato
         }
 
         const importElements = buildImportElementsFromParse(job.parse);
+        const staleComponentIds = findStaleImportedComponentIds(
+            req.params.id,
+            (project.components || []),
+            importElements
+        );
+
+        for (const staleId of staleComponentIds) {
+            const deleteRes = await dbApi.data.deleteComponent(staleId);
+            if (!deleteRes.success) {
+                return res.status(500).json({ success: false, message: deleteRes.error || '清理旧 IFC 构件失败' });
+            }
+        }
+
         const result = await importIfcElementsToProject(req.params.id, importElements);
         if (!result.success) {
             return res.status(result.status || 500).json({ success: false, message: result.message || '同步 IFC 失败' });
@@ -1847,9 +2286,49 @@ app.post('/api/projects/:id/components/sync-ifc', requireRole(['admin', 'operato
 
         return res.json({
             ...result,
+            removed: staleComponentIds.length,
             parseTotal: Number(job.parse.total || 0),
             parseFromCache: job.parse.fromCache === true
         });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.delete('/api/projects/:id/components', requireRole(['admin']), async (req, res) => {
+    try {
+        const projectRes = await dbApi.data.getProjectById(req.params.id);
+        if (!projectRes.success || !projectRes.data) {
+            return res.status(404).json({ success: false, message: '项目不存在' });
+        }
+
+        let removed = 0;
+        if (typeof dbApi.data.deleteComponentsByProject === 'function') {
+            const deleteRes = await dbApi.data.deleteComponentsByProject(req.params.id);
+            if (!deleteRes.success) {
+                return res.status(500).json({ success: false, message: deleteRes.error || '清除项目构件失败' });
+            }
+            removed = Number(deleteRes.changes || 0);
+        } else {
+            const componentsRes = await dbApi.data.getComponentsByProject(req.params.id);
+            if (!componentsRes.success) {
+                return res.status(500).json({ success: false, message: componentsRes.error || '读取项目构件失败' });
+            }
+            for (const component of componentsRes.data || []) {
+                const deleteRes = await dbApi.data.deleteComponent(component.id);
+                if (!deleteRes.success) {
+                    return res.status(500).json({ success: false, message: deleteRes.error || '清除项目构件失败' });
+                }
+                removed++;
+            }
+        }
+
+        const statsRes = await recalcProjectStats(req.params.id);
+        if (!statsRes.success) {
+            return res.status(500).json({ success: false, message: statsRes.error || '项目统计更新失败' });
+        }
+        const refreshedRes = await dbApi.data.getProjectWithComponentsById(req.params.id);
+        return res.json({ success: true, removed, project: refreshedRes.success ? refreshedRes.data : null });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
     }
@@ -2247,4 +2726,13 @@ async function startServer() {
     }
 }
 
-startServer();
+if (require.main === module) {
+    startServer();
+}
+
+module.exports = {
+    app,
+    buildImportElementsFromParse,
+    importIfcElementsToProject,
+    recalcProjectStats
+};

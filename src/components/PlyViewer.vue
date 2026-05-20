@@ -8,10 +8,10 @@
       <div class="ply-empty-icon">☁️</div>
       <div class="ply-empty-title">{{ emptyTitle }}</div>
       <div class="ply-empty-sub">{{ emptySub }}</div>
-      <label class="ply-upload-btn" v-if="showUpload">
-        <input type="file" accept=".ply" @change="handleFileUpload" style="display:none" />
+      <button type="button" class="ply-upload-btn" v-if="showUpload" @click="triggerFilePicker">
         上传 PLY 文件
-      </label>
+      </button>
+      <input ref="hiddenFileInput" type="file" accept=".ply" @change="handleFileUpload" style="display:none" />
     </div>
 
     <!-- Control Panel -->
@@ -72,10 +72,9 @@
         </div>
 
         <!-- Upload new file -->
-        <label class="ply-upload-link" v-if="showUpload">
-          <input type="file" accept=".ply" @change="handleFileUpload" style="display:none" />
+        <button type="button" class="ply-upload-link" v-if="showUpload" @click="triggerFilePicker">
           📁 加载新文件
-        </label>
+        </button>
       </div>
     </div>
 
@@ -93,6 +92,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { parsePLY, computeHeightColors, voxelDownsample } from '@/utils/plyParser.js';
+import { isServerPlyFileId } from '@/utils/plySyncStore.js';
 
 export default {
   name: 'PlyViewer',
@@ -141,7 +141,9 @@ export default {
   },
   watch: {
     plyUrl(val) { if (val) this.loadFromUrl(); },
-    plyFileId(val) { if (val) this.loadFromApi(); },
+    plyFileId(val) {
+      if (isServerPlyFileId(val)) this.loadFromApi();
+    },
     pointCloudData: {
       handler(val) { if (val && val.length > 0) this.loadFromArray(); },
       deep: true,
@@ -155,7 +157,7 @@ export default {
     this.initThree();
     this.setupResize();
     if (this.plyUrl) this.loadFromUrl();
-    else if (this.plyFileId) this.loadFromApi();
+    else if (isServerPlyFileId(this.plyFileId)) this.loadFromApi();
     else if (this.pointCloudData && this.pointCloudData.length > 0) this.loadFromArray();
     else if (this.plyInfoData) {
       this.plyInfo = this.plyInfoData;
@@ -260,6 +262,11 @@ export default {
       this.controls = null;
     },
 
+    triggerFilePicker() {
+      const input = this.$refs.hiddenFileInput;
+      if (input && typeof input.click === 'function') input.click();
+    },
+
     // ─── Data Loading ───────────────────────────────────────────────────────
 
     setLoading(text) {
@@ -286,7 +293,7 @@ export default {
     },
 
     async loadFromApi() {
-      if (!this.plyFileId) return;
+      if (!isServerPlyFileId(this.plyFileId)) return;
       this.setLoading('从服务器加载...');
       try {
         // Try to get processed point cloud from PlyCloudWeb backend
@@ -538,9 +545,24 @@ export default {
       this.pointCloudData = data;
       this.plyInfoData = info;
     },
+    getSharedPointCloudPayload() {
+      if (!this.rawPositions || !this.rawCount) return null;
+      const pointCloudData = new Array(this.rawCount);
+      for (let i = 0; i < this.rawCount; i++) {
+        pointCloudData[i] = [
+          this.rawPositions[i * 3],
+          this.rawPositions[i * 3 + 1],
+          this.rawPositions[i * 3 + 2],
+        ];
+      }
+      return {
+        pointCloudData,
+        plyInfoData: this.plyInfo || null,
+      };
+    },
     reload() {
       if (this.plyUrl) this.loadFromUrl();
-      else if (this.plyFileId) this.loadFromApi();
+      else if (isServerPlyFileId(this.plyFileId)) this.loadFromApi();
       else if (this.pointCloudData.length > 0) this.loadFromArray();
     },
   },

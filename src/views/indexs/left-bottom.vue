@@ -10,7 +10,7 @@
         历史检测记录
       </button>
       <div class="tab-spacer" />
-      <button v-if="canEdit && activeTab === 'today'" type="button" class="btn-edit" @click="openEditModal">编辑</button>
+      <button v-if="canEdit && activeTab === 'today'" type="button" class="btn-edit" @click="openPlanEdit">编辑计划</button>
     </div>
 
     <!-- ── 今日检测计划 ── -->
@@ -27,7 +27,7 @@
           </svg>
         </div>
         <div class="empty-text">暂无今日检测计划</div>
-        <div class="empty-sub">点击「编辑」添加检测项目</div>
+        <div class="empty-sub">请在项目构件管理中维护检测计划</div>
       </div>
 
       <!-- 数据列表 -->
@@ -209,34 +209,7 @@ export default {
           return
         }
       } catch (e) {}
-      this.fetchTodayPlanFromLocal()
-    },
-
-    fetchTodayPlanFromLocal() {
-      try {
-        const raw = localStorage.getItem('cm_projects')
-        const projects = raw ? JSON.parse(raw) : []
-        const todayStr = new Date().toISOString().slice(0, 10)
-        const items = []
-        for (const p of projects) {
-          for (const c of (p.components || [])) {
-            if (c.planDate && c.planDate !== todayStr) continue
-            items.push({
-              project: p.name || '',
-              projectId: p.id || '',
-              componentId: c.id || '',
-              componentName: c.componentMark || c.name || '',
-              team: c.teamLeader || '',
-              teamName: c.teamName || '',
-              type: c.ifcType || (c.name || '').split(' ')[0] || '',
-              status: c.status || '待检测',
-            })
-          }
-        }
-        items.sort((a, b) => (a.project || '').localeCompare(b.project || '', 'zh'))
-        this.todayList = items
-        this.$nextTick(() => this.startScroll())
-      } catch (e) { this.todayList = [] }
+      this.todayList = []
     },
 
     async fetchHistory() {
@@ -252,19 +225,70 @@ export default {
     goToProject(item) {
       if (item && item.componentName) {
         localStorage.setItem('current_component_mark', item.componentName)
+        window.dispatchEvent(new CustomEvent('current-component-mark-change', { detail: { mark: item.componentName } }))
       }
       if (this.$router) this.$router.push('/secondview').catch(() => {})
     },
     goToHistoryItem() {},
 
-    openEditModal() {
+    openPlanEdit() {
       if (!this.canEdit) { alert('当前账号仅支持查看'); return }
-      this.editList = JSON.parse(JSON.stringify(this.todayList))
+      this.editList = (this.todayList || []).map(item => ({
+        project: item.project || '',
+        projectId: item.projectId || '',
+        componentId: item.componentId || '',
+        componentName: item.componentName || '',
+        componentMark: item.componentMark || item.componentName || '',
+        teamName: item.teamName || '',
+        team: item.team || '',
+        inspector: item.inspector || '',
+        manager: item.manager || '',
+        planDate: item.planDate || '',
+        status: item.status || '待检测'
+      }))
       this.showModal = true
     },
     closeModal() { this.showModal = false },
-    deleteRow(idx) { this.editList.splice(idx, 1) },
-    addRow() { this.editList.push({ project: '', team: '', type: '' }) },
+    async deleteRow(idx) {
+      const row = this.editList[idx]
+      if (!row) return
+      if (row.projectId && row.componentId) {
+        try {
+          const res = await fetch(`/api/today-plan/${encodeURIComponent(row.projectId)}/${encodeURIComponent(row.componentId)}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+          })
+          const d = await res.json().catch(() => ({}))
+          if (!res.ok || !d || !d.success) {
+            throw new Error((d && d.message) || '删除计划失败')
+          }
+          this.todayList = Array.isArray(d.data) ? d.data : []
+          this.editList.splice(idx, 1)
+          if (this.$bus) this.$bus.$emit('project-list-update')
+          return
+        } catch (e) {
+          if (this.$Message && this.$Message.error) this.$Message.error(e.message || '删除计划失败')
+          else alert(e.message || '删除计划失败')
+          return
+        }
+      }
+      this.editList.splice(idx, 1)
+    },
+    addRow() {
+      this.editList.push({
+        project: '',
+        projectId: '',
+        componentId: '',
+        componentName: '',
+        componentMark: '',
+        teamName: '',
+        team: '',
+        inspector: '',
+        manager: '',
+        planDate: '',
+        status: '待检测'
+      })
+    },
 
     async saveEdit() {
       if (!this.canEdit) { alert('当前账号仅支持查看'); return }
@@ -274,12 +298,21 @@ export default {
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ planItems: this.editList.map(i => ({
             projectId: i.projectId, componentId: i.componentId,
-            planDate: i.planDate, teamLeader: i.team,
-            qualityInspector: i.inspector, qualityManager: i.manager, status: i.status
+            teamName: i.teamName,
+            planDate: i.planDate,
+            teamLeader: i.team,
+            qualityInspector: i.inspector,
+            qualityManager: i.manager,
+            status: i.status
           })) })
         })
         const d = await res.json()
-        if (d && d.success) { this.todayList = d.data; this.closeModal(); return }
+        if (d && d.success) {
+          this.todayList = d.data
+          this.closeModal()
+          if (this.$bus) this.$bus.$emit('project-list-update')
+          return
+        }
       } catch (e) {}
       this.saveEditToLocal(); this.closeModal()
     },

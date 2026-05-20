@@ -206,6 +206,10 @@ module.exports = {
         target: devApiTarget,
         changeOrigin: true
       },
+      '/banzu': {
+        target: devApiTarget,
+        changeOrigin: true
+      },
       '/wasm': {
         target: devApiTarget,
         changeOrigin: true

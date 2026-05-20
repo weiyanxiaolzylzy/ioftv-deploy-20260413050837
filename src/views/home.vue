@@ -11,7 +11,8 @@
       class="bg"
       :class="{
         'light-theme': isLightTheme,
-        'steel-qc-theme': themeMode === 'steel-qc'
+        'steel-qc-theme': themeMode === 'steel-qc',
+        'camera-theme': themeMode === 'camera'
       }"
     >
       <dv-loading v-if="loading">Loading...</dv-loading>
@@ -26,10 +27,11 @@
               <div class="theme-toggle-btn" @click="toggleTheme" :title="themeHint">
                 <span v-if="themeMode === 'light'">🌙</span>
                 <span v-else-if="themeMode === 'steel-qc'">🏭</span>
+                <span v-else-if="themeMode === 'camera'">📷</span>
                 <span v-else>☀️</span>
               </div>
               <div class="version-toggle-btn" @click="toggleVersion">
-                钢结构尺寸检测系统
+                钢结构智能检测系统
               </div>
             </div>
           </div>
@@ -82,7 +84,8 @@ export default {
     themeHint() {
       if (this.themeMode === "dark") return "当前：深蓝科技风，点击切换亮色主题";
       if (this.themeMode === "light") return "当前：亮色主题，点击切换钢结构检测风";
-      return "当前：钢结构检测风，点击切换深蓝科技风";
+      if (this.themeMode === "steel-qc") return "当前：钢结构检测风，点击切换相机背景";
+      return "当前：相机背景，点击切换深蓝科技风";
     },
   },
   filters: {
@@ -99,6 +102,9 @@ export default {
     } else if (savedTheme === "steel-qc") {
       this.isLightTheme = false;
       this.themeMode = "steel-qc";
+    } else if (savedTheme === "camera") {
+      this.isLightTheme = false;
+      this.themeMode = "camera";
     } else {
       this.isLightTheme = false;
       this.themeMode = "dark";
@@ -109,12 +115,25 @@ export default {
     this.cancelLoading();
     // 监听主题切换
     window.addEventListener("themeChange", this.handleThemeChange);
+    this.notifyDashboardRefresh();
   },
   beforeDestroy() {
     clearInterval(this.timing);
     window.removeEventListener("themeChange", this.handleThemeChange);
   },
+  watch: {
+    '$route.name'() {
+      this.notifyDashboardRefresh();
+    }
+  },
   methods: {
+    notifyDashboardRefresh() {
+      if (this.$route && this.$route.name === "index" && this.$bus) {
+        this.$nextTick(() => {
+          this.$bus.$emit('project-list-update');
+        });
+      }
+    },
     handleThemeChange() {
       const savedTheme = localStorage.getItem("themeMode");
       this.isLightTheme = savedTheme === "light";
@@ -136,6 +155,10 @@ export default {
         this.themeMode = "steel-qc";
         this.isLightTheme = false;
         localStorage.setItem("themeMode", "steel-qc");
+      } else if (this.themeMode === "steel-qc") {
+        this.themeMode = "camera";
+        this.isLightTheme = false;
+        localStorage.setItem("themeMode", "camera");
       } else {
         this.themeMode = "dark";
         this.isLightTheme = false;

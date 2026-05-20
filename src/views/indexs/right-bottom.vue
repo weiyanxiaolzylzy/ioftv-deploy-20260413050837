@@ -2,35 +2,7 @@
   <div class="right_bottom_wrap beautify-scroll-def">
     <!-- 顶部：四个等宽面板（三模型 + 检测信息） -->
     <div class="models_container">
-      <!-- 左侧：构件详情视口（双视口架构：隐藏场景提取几何，干净场景渲染单构件） -->
-      <div class="model_view">
-        <div class="view_title view_title--with-action">
-          <span class="view_title__text"><span class="dot"></span> 构件模型</span>
-          <div v-if="todayPlanList.length > 0" class="component-nav">
-            <button type="button" class="btn-nav" :disabled="currentPlanIndex <= 0" @click="prevComponent">‹ 上</button>
-            <span class="nav-counter">{{ currentPlanIndex + 1 }}/{{ todayPlanList.length }}</span>
-            <button type="button" class="btn-nav" :disabled="currentPlanIndex >= todayPlanList.length - 1" @click="nextComponent">下 ›</button>
-          </div>
-        </div>
-        <div class="canvas_wrap component_ifc_wrap">
-          <ComponentDetailViewport
-            v-if="currentPlanItem && currentPlanItem.ifcUrl && currentPlanItem.ifcElementId"
-            :key="'cdv-' + (currentPlanItem.ifcUrl || '')"
-            :ifcUrl="resolveAbsUrl(currentPlanItem.ifcUrl)"
-            :expressID="Number(currentPlanItem.ifcElementId)"
-            backgroundColor="#051020"
-            @loaded="onComponentLoaded"
-            @error="onComponentError"
-          />
-          <div v-else class="placeholder_text">
-            <div class="placeholder-icon">📦</div>
-            <div>暂无今日检测计划或计划中无关联 IFC 构件</div>
-            <div class="placeholder-sub">在「项目构件管理」中勾选构件并设置检测日期为今天</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 中间：项目模型（整项目 IFC，选中后左侧构件模型同步加载同一 IFC） -->
+      <!-- 左侧：项目模型（整项目 IFC，选中后左侧构件模型同步加载同一 IFC） -->
       <div class="model_view project_model_view">
         <div class="view_title view_title--with-action">
           <span class="view_title__text"><span class="dot project_dot"></span> 项目模型</span>
@@ -51,13 +23,11 @@
             :key="'project-' + projectIfcUrl"
             :ifcUrl="projectIfcUrl"
             :projectId="selectedElement && selectedElement.projectId ? selectedElement.projectId : (currentPlanItem && currentPlanItem.projectId ? currentPlanItem.projectId : '')"
-            :enablePick="true"
+            :enablePick="false"
             :showHints="false"
             :backgroundColor="0x051020"
             :useIframeMode="true"
             embedMode="minimal"
-            @element-click="onProjectElementClick"
-            @element-dblclick="onProjectElementDblClick"
             @model-loaded="onProjectModelLoaded"
           />
           <div v-else-if="projectViewExpanded && projectIfcUrl" class="placeholder_text placeholder_text--compact">
@@ -72,6 +42,36 @@
         </div>
       </div>
 
+      <!-- 中间：构件详情视口（双视口架构：隐藏场景提取几何，干净场景渲染单构件） -->
+      <div class="model_view">
+        <div class="view_title view_title--with-action">
+          <span class="view_title__text"><span class="dot"></span> 构件模型</span>
+          <div v-if="todayPlanList.length > 0" class="component-nav">
+            <button type="button" class="btn-nav" :disabled="currentPlanIndex <= 0" @click="prevComponent">‹ 上</button>
+            <span class="nav-counter">{{ currentPlanIndex + 1 }}/{{ todayPlanList.length }}</span>
+            <button type="button" class="btn-nav" :disabled="currentPlanIndex >= todayPlanList.length - 1" @click="nextComponent">下 ›</button>
+          </div>
+        </div>
+        <div class="canvas_wrap component_ifc_wrap">
+          <ComponentDetailViewport
+            v-if="canOpenCurrentComponentModel"
+            :key="'cdv-' + resolveAbsUrl(currentPlanItem.ifcUrl)"
+            :ifcUrl="resolveAbsUrl(currentPlanItem.ifcUrl)"
+            :projectId="currentPlanItem && currentPlanItem.projectId ? currentPlanItem.projectId : ''"
+            :expressID="Number(currentPlanItem.ifcElementId)"
+            :componentMark="currentPlanItem.componentMark || currentPlanItem.componentName || ''"
+            backgroundColor="#051020"
+            @loaded="onComponentLoaded"
+            @error="onComponentError"
+          />
+          <div v-else class="placeholder_text">
+            <div class="placeholder-icon">📦</div>
+            <div>{{ componentPlaceholderTitle }}</div>
+            <div class="placeholder-sub">{{ componentPlaceholderSub }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 右侧：点云模型 -->
       <div class="model_view">
         <div class="view_title">
@@ -81,6 +81,8 @@
           <PlyViewer
             ref="plyViewer"
             :plyFileId="plyFileId"
+            :pointCloudData="plyPointCloudData"
+            :plyInfoData="plyInfoData"
             :maxPoints="200000"
             :voxelSize="0.005"
             :emptyTitle="plyEmptyTitle"
@@ -98,27 +100,25 @@
           <span class="dot info_dot"></span> 当前构件检测信息
         </div>
         <div class="canvas_wrap detection_info_wrap">
-          <div class="info_content">
-            <div class="info_item main_id">
-              <div class="label">构件编号</div>
-              <div class="value">{{ currentComponent.id || '---' }}</div>
+          <div class="info_panel">
+            <div class="info_row">
+              <span class="info_row__label">构件编号：</span>
+              <span class="info_row__value">{{ currentComponent.id || '---' }}</span>
             </div>
 
-            <div class="info_item status">
-              <div class="label">检测状态</div>
-              <div class="value" :class="currentComponent.status === '不合格' ? 'error' : currentComponent.status === '合格' ? 'success' : ''">
+            <div class="info_row">
+              <span class="info_row__label">检测状态：</span>
+              <span class="info_row__value" :class="currentComponent.status === '不合格' ? 'error' : currentComponent.status === '合格' ? 'success' : ''">
                 {{ currentComponent.status || '待机中' }}
-              </div>
+              </span>
             </div>
 
-            <div class="info_item issues">
-              <div class="label">不合格项</div>
-              <div v-if="currentComponent.issues && currentComponent.issues.length > 0" class="issue_list">
-                <div class="issue_tag" v-for="(issue, index) in currentComponent.issues" :key="index">
-                  {{ issue }}
-                </div>
-              </div>
-              <div v-else class="value">---</div>
+            <div class="info_row info_row--multiline">
+              <span class="info_row__label">不合格项：</span>
+              <span v-if="currentComponent.issues && currentComponent.issues.length > 0" class="info_row__value info_row__value--list">
+                {{ currentComponent.issues.join('、') }}
+              </span>
+              <span v-else class="info_row__value">---</span>
             </div>
           </div>
         </div>
@@ -142,13 +142,11 @@
             ref="projectViewerFs"
             :ifcUrl="projectIfcUrl"
             :projectId="selectedElement && selectedElement.projectId ? selectedElement.projectId : (currentPlanItem && currentPlanItem.projectId ? currentPlanItem.projectId : '')"
-            :enablePick="true"
+            :enablePick="false"
             :showHints="false"
             :backgroundColor="0x051020"
             :useIframeMode="true"
             embedMode="minimal"
-            @element-click="onProjectElementClick"
-            @element-dblclick="onProjectElementDblClick"
             @model-loaded="onProjectModelLoaded"
           />
         </div>
@@ -158,19 +156,24 @@
 </template>
 
 <script>
-import ComponentDetailViewport from '@/components/ComponentDetailViewport.vue';
 import AdvancedIfcViewer from '@/components/AdvancedIfcViewer.vue';
+import ComponentDetailViewport from '@/components/ComponentDetailViewport.vue';
 import PlyViewer from '@/components/PlyViewer.vue';
 import { getAuthHeaders } from '@/utils';
+import { getSharedPlyPayload, isServerPlyFileId, setSharedPlyPayload } from '@/utils/plySyncStore';
+
+const PLY_SYNC_STORAGE_KEY = 'shared_ply_cloud_state';
 
 export default {
   name: 'RightBottom',
-  components: { ComponentDetailViewport, AdvancedIfcViewer, PlyViewer },
+  components: { AdvancedIfcViewer, ComponentDetailViewport, PlyViewer },
   data() {
     return {
       // ─── PLY 点云 ────────────────────────────────────────────────────────────
       plyFileId: '',
       plyLoadedFileId: '',
+      plyPointCloudData: [],
+      plyInfoData: null,
       plyEmptyTitle: '暂无点云数据',
       plyEmptySub: '点击上传 PLY 文件 / 从 PlyCloudWeb 服务器加载',
 
@@ -185,16 +188,30 @@ export default {
       // 当前构件信息（第四格）
       currentComponent: { id: '---', status: '', issues: [] },
       selectedElement: null,
-
-      // WebSocket
-      ws: null,
-      wsReconnectTimer: null,
     };
   },
 
   computed: {
     currentPlanItem() {
       return this.todayPlanList[this.currentPlanIndex] || null;
+    },
+    canOpenCurrentComponentModel() {
+      return !!(
+        this.currentPlanItem &&
+        this.currentPlanItem.ifcUrl &&
+        Number.isFinite(Number(this.currentPlanItem.ifcElementId)) &&
+        Number(this.currentPlanItem.ifcElementId) > 0
+      );
+    },
+    componentPlaceholderTitle() {
+      if (!this.currentPlanItem) return '暂无今日检测计划或计划中无关联 IFC 构件';
+      if (!this.canOpenCurrentComponentModel) return '当前计划未关联可显示的 IFC 构件';
+      return '当前构件模型正在加载';
+    },
+    componentPlaceholderSub() {
+      if (!this.currentPlanItem) return '在「项目构件管理」中勾选构件并设置检测日期为今天';
+      if (!this.canOpenCurrentComponentModel) return '请检查该计划是否已同步 IFC 文件与构件 expressID';
+      return '项目模型保持整模静止，左侧直接显示当前单构件';
     }
   },
 
@@ -207,13 +224,14 @@ export default {
           syncSource: 'right-bottom',
         });
       }
-    },
+    }
   },
 
   mounted() {
     this.loadTodayPlan();
     this.checkSelectedComponent();
     this.loadActiveProject();
+    this.restorePlySyncState();
     if (this.$bus) {
       this.$bus.$on('project-ifc-change', this.onProjectIfcChange);
       this.$bus.$on('project-change', this.onProjectChangeAndCheck);
@@ -224,7 +242,6 @@ export default {
     }
     window.addEventListener('keydown', this.onKeydown);
     window.addEventListener('storage', this.onStorageChange);
-    this.connectDetectionWs();
   },
 
   beforeDestroy() {
@@ -237,8 +254,6 @@ export default {
       this.$bus.$off('ply-cloud-loaded', this.onPlyCloudLoaded);
       this.$bus.$off('ply-cloud-load', this.onPlyCloudLoad);
     }
-    if (this.ws) this.ws.close();
-    if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer);
   },
 
   methods: {
@@ -337,10 +352,10 @@ export default {
       const componentCode = this.resolveComponentCode(detail, item);
       if (componentCode && componentCode !== '---') {
         localStorage.setItem('current_component_mark', componentCode);
+        window.dispatchEvent(new CustomEvent('current-component-mark-change', { detail: { mark: componentCode } }));
       }
     },
 
-    // ─── ComponentDetailViewport 事件 ─────────────────────────────────────
     onComponentLoaded({ expressID, elementInfo }) {
       this.selectedElement = elementInfo || null;
       const item = this.currentPlanItem;
@@ -397,6 +412,7 @@ export default {
     },
     onStorageChange(e) {
       if (e.key === 'cm_selected_component') this.checkSelectedComponent();
+      if (e.key === PLY_SYNC_STORAGE_KEY) this.restorePlySyncState();
     },
     checkSelectedComponent() {
       try {
@@ -413,23 +429,10 @@ export default {
           this.syncComponentInfo();
           return;
         }
-        this.todayPlanList.unshift({
-          projectName: '',
-          projectId: sel.projectId || '',
-          componentName: sel.componentName || sel.name || '',
-          componentMark: sel.componentMark || '',
-          componentId: sel.globalId || String(sel.expressID || ''),
-          type: '',
-          team: '',
-          inspector: '',
-          planDate: '',
-          ifcUrl: sel.ifcUrl,
-          ifcElementId: String(sel.expressID),
-          ifcGlobalId: sel.globalId || '',
-          detail: sel.detail || null,
-        });
-        this.currentPlanIndex = 0;
-        this.syncComponentInfo();
+        if (this.todayPlanList.length) {
+          this.currentPlanIndex = 0;
+          this.syncComponentInfo();
+        }
       } catch (e) { /* ignore */ }
     },
 
@@ -454,75 +457,84 @@ export default {
     onPlyCloudLoaded({ fileId, filename, info, syncSource }) {
       // 避免回环：只接受来自其他页面的同步
       if (syncSource && syncSource !== 'right-bottom') {
-        this.plyFileId = fileId;
-        this.plyLoadedFileId = fileId;
+        this.plyFileId = isServerPlyFileId(fileId) ? fileId : '';
+        this.plyLoadedFileId = isServerPlyFileId(fileId) ? fileId : '';
         this.plyEmptyTitle = filename || '点云已加载';
         this.plyEmptySub = `已从检测页面同步: ${filename}`;
+        const sharedPayload = getSharedPlyPayload();
+        if (sharedPayload) {
+          this.plyPointCloudData = sharedPayload.pointCloudData || [];
+          this.plyInfoData = sharedPayload.plyInfoData || null;
+        }
+        this.persistPlySyncState({
+          fileId: isServerPlyFileId(fileId) ? fileId : '',
+          filename: this.plyEmptyTitle,
+          status: 'loaded',
+          syncSource,
+        });
       }
     },
 
     onPlyCloudLoad({ fileId, syncSource }) {
       if (syncSource && syncSource !== 'right-bottom') {
-        this.plyFileId = fileId;
+        this.plyFileId = isServerPlyFileId(fileId) ? fileId : '';
         this.plyEmptyTitle = '正在加载...';
         this.plyEmptySub = '从检测页面同步点云数据';
+        this.persistPlySyncState({
+          fileId: isServerPlyFileId(fileId) ? fileId : '',
+          filename: this.plyEmptyTitle,
+          status: 'loading',
+          syncSource,
+        });
       }
     },
 
     onPlyLoaded({ count, info }) {
       console.log(`[RightBottom] PLY loaded: ${count} points`, info);
       this.plyLoadedFileId = this.plyFileId || `local-${Date.now()}`;
-    },
-
-    // ─── WebSocket ──────────────────────────────────────────────────────────
-    connectDetectionWs() {
-      const WS_URL =
-        process.env.VUE_APP_DETECTION_WS ||
-        `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
-      try {
-        this.ws = new WebSocket(WS_URL);
-        this.ws.onopen = () => this.ws.send(JSON.stringify({ type: 'viewer' }));
-        this.ws.onmessage = async (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            await this.handleDetectionMessage(data);
-          } catch (e) { /* ignore */ }
-        };
-        this.ws.onclose = () => { this.wsReconnectTimer = setTimeout(() => this.connectDetectionWs(), 5000); };
-        this.ws.onerror = () => { /* ignore */ };
-      } catch (e) { this.wsReconnectTimer = setTimeout(() => this.connectDetectionWs(), 5000); }
-    },
-
-    async handleDetectionMessage(data) {
-      if (data.action === 'highlight') {
-        const { reason, expressID, name, globalId, componentMark, componentName } = data;
-        const resolvedMark = this.resolveComponentCode(
-          { componentMark, componentName, name, globalId, expressID },
-          this.currentPlanItem,
-          this.selectedElement
-        );
-        const resolvedName = this.getComponentDisplayName(
-          { componentName, name },
-          this.currentPlanItem,
-          this.selectedElement
-        );
-        this.selectedElement = {
-          expressID,
-          globalId: globalId || '',
-          name: resolvedName,
-          componentMark: resolvedMark !== '---' ? resolvedMark : '',
-          projectId: this.currentPlanItem && this.currentPlanItem.projectId ? this.currentPlanItem.projectId : '',
-          type: ''
-        };
-        this.currentComponent = {
-          id: resolvedMark,
-          status: reason === '合格' ? '合格' : '不合格',
-          issues: reason && reason !== '合格' ? [reason] : [],
-        };
-        if (resolvedMark && resolvedMark !== '---') {
-          localStorage.setItem('current_component_mark', resolvedMark);
-        }
+      const payload = this.$refs.plyViewer && this.$refs.plyViewer.getSharedPointCloudPayload
+        ? this.$refs.plyViewer.getSharedPointCloudPayload()
+        : null;
+      if (payload) {
+        setSharedPlyPayload(payload);
       }
+      this.persistPlySyncState({
+        fileId: isServerPlyFileId(this.plyFileId) ? this.plyFileId : '',
+        filename: this.plyEmptyTitle,
+        status: 'loaded',
+        syncSource: 'right-bottom',
+      });
+    },
+
+    persistPlySyncState({ fileId, filename, status, syncSource }) {
+      if (!fileId) return;
+      try {
+        localStorage.setItem(PLY_SYNC_STORAGE_KEY, JSON.stringify({
+          fileId,
+          filename: filename || '点云已加载',
+          status: status || 'loaded',
+          syncSource: syncSource || 'right-bottom',
+          updatedAt: Date.now(),
+        }));
+      } catch (e) { /* ignore */ }
+    },
+
+    restorePlySyncState() {
+      try {
+        const sharedPayload = getSharedPlyPayload();
+        if (sharedPayload) {
+          this.plyPointCloudData = sharedPayload.pointCloudData || [];
+          this.plyInfoData = sharedPayload.plyInfoData || null;
+        }
+        const raw = localStorage.getItem(PLY_SYNC_STORAGE_KEY);
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        if (!state || !state.fileId) return;
+        this.plyFileId = state.fileId;
+        this.plyLoadedFileId = state.status === 'loaded' ? state.fileId : this.plyLoadedFileId;
+        this.plyEmptyTitle = state.status === 'loading' ? '正在加载...' : (state.filename || '点云已加载');
+        this.plyEmptySub = state.status === 'loading' ? '从同步缓存恢复点云加载状态' : `已同步点云: ${state.filename || state.fileId}`;
+      } catch (e) { /* ignore */ }
     },
 
     resolveAbsUrl(u) {
@@ -531,7 +543,7 @@ export default {
       // Use window.location.origin to avoid env placeholder issues in production
       const base = window.location.origin;
       return `${base}/${u.replace(/^\//, '')}`;
-    },
+    }
   }
 };
 </script>
@@ -723,112 +735,61 @@ export default {
         }
       }
 
+
       &.info_model_view {
         border-top: 2px solid rgba(167, 139, 250, 0.35);
       }
 
       .detection_info_wrap {
-        padding: 12px;
+        padding: 18px 20px;
         align-items: stretch;
         justify-content: flex-start;
         overflow-y: auto;
 
-        .info_content {
-          flex: 1;
+        .info_panel {
           width: 100%;
           display: flex;
           flex-direction: column;
-          justify-content: space-evenly;
-          align-items: stretch;
-          gap: 10px;
-          min-height: 0;
+          gap: 18px;
+          padding-top: 6px;
 
-          .divider {
-            height: 1px;
-            background: rgba(0, 212, 255, 0.15);
-            margin: 4px 0;
-          }
-
-          .info_item {
-            flex: 0 0 auto;
+          .info_row {
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 4px;
-            padding: 10px 8px;
+            align-items: flex-start;
+            justify-content: flex-start;
+            gap: 6px;
+            text-align: left;
+            line-height: 1.55;
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.86);
 
-            .label {
-              font-size: 13px;
-              color: rgba(255, 255, 255, 0.85);
-              margin-bottom: 6px;
+            &__label {
+              flex: 0 0 auto;
+              color: rgba(255, 255, 255, 0.58);
+              font-weight: 700;
+              letter-spacing: 1px;
             }
 
-            .value {
-              font-size: 18px;
-              color: #fff;
-              font-weight: bold;
-              text-align: center;
+            &__value {
+              flex: 1 1 auto;
+              min-width: 0;
+              color: #ffffff;
+              font-weight: 700;
               word-break: break-all;
-
-              &.small {
-                font-size: 14px;
-              }
-
-              &.mono {
-                font-family: 'Courier New', monospace;
-                font-size: 12px;
-              }
 
               &.success { color: #67c23a; }
               &.error { color: #f56c6c; animation: blink 2s infinite; }
             }
 
-            &.main_id {
-              .value {
-                color: #00baff;
-                font-family: 'Arial', sans-serif;
-                font-size: 21px;
+            &--multiline {
+              .info_row__value {
+                white-space: normal;
+                line-height: 1.6;
               }
             }
 
-            &.issues {
-              flex: 1 1 auto;
-              min-height: 0;
-
-              .issue_list {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-                width: 100%;
-                align-items: center;
-                overflow-y: auto;
-                max-height: 60px;
-
-                .issue_tag {
-                  background: rgba(245, 108, 108, 0.2);
-                  color: #f56c6c;
-                  font-size: 13px;
-                  padding: 4px 10px;
-                  border-radius: 2px;
-                  border: 1px solid rgba(245, 108, 108, 0.5);
-                  text-align: center;
-                  max-width: 100%;
-                  white-space: normal;
-                  line-height: 1.3;
-                }
-              }
-            }
-
-            &.detail {
-              background: rgba(0, 212, 255, 0.04);
-              padding: 8px;
-
-              .value {
-                font-size: 13px;
-                font-weight: normal;
-              }
+            .info_row__value--list {
+              color: rgba(245, 108, 108, 0.96);
             }
           }
         }

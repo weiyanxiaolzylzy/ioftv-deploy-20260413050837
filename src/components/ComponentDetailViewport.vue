@@ -43,8 +43,12 @@ export default {
   props: {
     // IFC 文件完整 URL（已解析的绝对路径）
     ifcUrl: { type: String, default: '' },
+    // 当前项目 ID，用于 iframe 走数据库构件索引
+    projectId: { type: [String, Number], default: '' },
     // 要高亮的构件 expressID
     expressID: { type: Number, default: null },
+    // 项目构件编号，优先用于小窗标题显示
+    componentMark: { type: String, default: '' },
     // 背景色（保留 prop，暂不传入 iframe）
     backgroundColor: { type: [Number, String], default: 0x051020 }
   },
@@ -60,7 +64,11 @@ export default {
     iframeSrc() {
       if (!this.ifcUrl) return '';
       const base = `${window.location.origin}/ifc`;
-      return `${base}/?ifcUrl=${encodeURIComponent(this.ifcUrl)}&embed=element-panel`;
+      let query = `?ifcUrl=${encodeURIComponent(this.ifcUrl)}&embed=element-panel`;
+      if (this.projectId !== '' && this.projectId !== null && this.projectId !== undefined) {
+        query += `&projectId=${encodeURIComponent(String(this.projectId))}&dataSource=db`;
+      }
+      return `${base}/${query}`;
     },
     // postMessage 的 targetOrigin（必须与 iframe 同源）
     targetOrigin() {
@@ -75,9 +83,14 @@ export default {
       this.errorMsg = '';
     },
     // 同模型切换不同 expressID 时，直接发消息无需重载
-    expressID(newId) {
-      if (this.iframeReady && newId != null) {
-        this.postHighlight(newId);
+    expressID() {
+      if (this.iframeReady && this.expressID != null) {
+        this.postHighlight();
+      }
+    },
+    componentMark() {
+      if (this.iframeReady && this.expressID != null) {
+        this.postHighlight();
       }
     }
   },
@@ -106,7 +119,7 @@ export default {
         this.iframeReady = true;
         if (this.expressID != null) {
           // 模型就绪后立即高亮目标构件
-          this.postHighlight(this.expressID);
+          this.postHighlight();
         }
         this.$emit('loaded', { expressID: this.expressID, elementInfo: null });
       } else if (data.type === 'error') {
@@ -116,12 +129,13 @@ export default {
       }
     },
 
-    postHighlight(expressID) {
+    postHighlight() {
       const iframe = this.$refs.viewerIframe;
       if (!iframe || !iframe.contentWindow) return;
       iframe.contentWindow.postMessage({
         type: 'select-element',
-        expressID: Number(expressID),
+        expressID: Number(this.expressID),
+        componentMark: this.componentMark || '',
         focus: true,
         isolateOnly: true,
       }, this.targetOrigin);

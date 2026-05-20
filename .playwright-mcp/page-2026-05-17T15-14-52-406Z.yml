@@ -1,0 +1,20 @@
+- generic [ref=e3]:
+  - img "Login Background" [ref=e6]
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - img "Logo" [ref=e11]
+      - heading "钢结构数字孪生智能检测系统" [level=1] [ref=e12]
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e15]: 用户名
+        - textbox "请输入用户名" [ref=e16]
+      - generic [ref=e17]:
+        - generic [ref=e18]: 密码
+        - textbox "请输入密码" [ref=e19]
+      - generic [ref=e20]:
+        - generic [ref=e21]: 权限
+        - combobox [ref=e22] [cursor=pointer]:
+          - option "质量员 (QA)" [selected]
+          - option "质检员 (QC)"
+          - option "其他人员"
+      - button "登录" [ref=e23] [cursor=pointer]

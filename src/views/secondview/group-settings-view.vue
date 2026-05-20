@@ -53,14 +53,25 @@
           <div class="form-item">
             <label>班组照片</label>
             <div class="photo-upload">
-              <div class="photo-preview" v-if="formData.photoPreview">
-                <img :src="formData.photoPreview" alt="预览" />
+              <div class="photo-stage">
+                <div class="photo-preview" v-if="formData.photoPreview">
+                  <img :src="formData.photoPreview" alt="预览" />
+                </div>
+                <div class="photo-placeholder" v-else>
+                  <span>📷</span>
+                  <span>暂无照片</span>
+                </div>
               </div>
-              <div class="photo-placeholder" v-else>
-                <span>📷</span>
-                <span>点击选择图片</span>
+              <div class="photo-toolbar">
+                <input
+                  type="file"
+                  ref="photoInput"
+                  @change="handlePhotoChange"
+                  accept="image/*"
+                  class="photo-native-input"
+                />
+                <span class="photo-tip">支持 jpg/png，选择文件后会立即显示预览</span>
               </div>
-              <input type="file" ref="photoInput" @change="handlePhotoChange" accept="image/*" class="photo-input" />
             </div>
           </div>
 
@@ -147,6 +158,12 @@ export default {
         const response = await fetch('/api/groups', { headers: getAuthHeaders() });
         const data = await response.json();
         this.groups = Array.isArray(data) ? data : [];
+        if (this.selectedGroup && this.selectedGroup.id) {
+          const matched = this.groups.find((group) => String(group.id) === String(this.selectedGroup.id))
+          if (matched) {
+            this.selectedGroup = { ...matched }
+          }
+        }
       } catch (err) {
         console.error('获取班组列表失败', err);
       }
@@ -252,7 +269,14 @@ export default {
           })
           const res = await response.json()
           if (res.success || res.data) {
-            this.fetchGroups()
+            const updatedGroup = res.data ? { ...res.data } : null
+            if (updatedGroup) {
+              this.groups = this.groups.map((group) =>
+                String(group.id) === String(updatedGroup.id) ? updatedGroup : group
+              )
+              this.selectedGroup = updatedGroup
+            }
+            await this.fetchGroups()
             this.cancelForm()
             if (this.$bus) this.$bus.$emit('groups-updated')
           } else {
@@ -276,6 +300,7 @@ export default {
               photoUrl: '',
               photoPreview: ''
             }
+            this.selectedGroup = null
             if (this.$bus) this.$bus.$emit('groups-updated')
           } else {
             alert('添加失败')
@@ -559,10 +584,17 @@ export default {
 }
 
 .photo-upload {
+  width: 100%;
+  max-width: 360px;
+}
+
+.photo-stage {
   position: relative;
-  width: 120px;
-  height: 120px;
-  cursor: pointer;
+  width: 100%;
+  height: 220px;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 12px;
 }
 
 .photo-preview, .photo-placeholder {
@@ -586,22 +618,45 @@ export default {
 
 .photo-placeholder {
   color: rgba(255, 255, 255, 0.5);
-  font-size: 12px;
+  font-size: 14px;
   gap: 4px;
 
   span:first-child {
-    font-size: 28px;
+    font-size: 34px;
   }
 }
 
-.photo-input {
-  position: absolute;
-  top: 0;
-  left: 0;
+.photo-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.photo-native-input {
   width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
+  max-width: 320px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 212, 255, 0.65);
+  background: rgba(0, 40, 80, 0.5);
+  color: #fff;
+  font-size: 14px;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: rgba(0, 212, 255, 0.9);
+  }
+
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+  }
+}
+
+.photo-tip {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
 }
 
 .form-actions {

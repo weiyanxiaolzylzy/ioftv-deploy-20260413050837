@@ -1,50 +1,21 @@
 <template>
   <div class="inspection_images_wrap">
-    <!-- 切换按钮 -->
-    <div class="mode_toggle">
-      <div 
-        class="toggle_item" 
-        :class="{ active: viewMode === 'binocular' }"
-        @click="viewMode = 'binocular'"
-      >
-        双目组图
-      </div>
-      <div 
-        class="toggle_item" 
-        :class="{ active: viewMode === 'monocular' }"
-        @click="viewMode = 'monocular'"
-      >
-        单目组图
-      </div>
-    </div>
-
     <!-- 图像显示区域 -->
-    <div class="images_container" :class="viewMode">
-      <template v-if="viewMode === 'binocular'">
-        <div class="img_box">
-          <div class="camera_label">左相机 (Left)</div>
-          <div class="img_placeholder">
-            <div class="scanner_line"></div>
-            <img src="/img/xiangji.jpg" alt="Left Camera" />
-          </div>
+    <div class="images_container">
+      <div class="img_box">
+        <div class="camera_label">主相机</div>
+        <div class="img_placeholder">
+          <div class="scanner_line"></div>
+          <img src="/img/xiangji.jpg" alt="Main Camera" />
         </div>
-        <div class="img_box">
-          <div class="camera_label">右相机 (Right)</div>
-          <div class="img_placeholder">
-            <div class="scanner_line"></div>
-            <img src="/img/xiangji.jpg" alt="Right Camera" />
-          </div>
+      </div>
+      <div class="img_box">
+        <div class="camera_label">侧相机</div>
+        <div class="img_placeholder">
+          <div class="scanner_line"></div>
+          <img src="/img/xiangji.jpg" alt="Side Camera" />
         </div>
-      </template>
-      <template v-else>
-        <div class="img_box large">
-          <div class="camera_label">主相机 (Main)</div>
-          <div class="img_placeholder">
-            <div class="scanner_line"></div>
-            <img src="/img/xiangji.jpg" alt="Main Camera" />
-          </div>
-        </div>
-      </template>
+      </div>
     </div>
 
     <!-- 检测信息 -->
@@ -64,6 +35,10 @@
 <script>
 export default {
   methods: {
+    syncCurrentMarkFromStorage() {
+      const stored = localStorage.getItem('current_component_mark');
+      this.currentMark = stored || '---';
+    },
     resolveComponentCode(payload) {
       if (!payload || typeof payload !== 'object') return '---';
       const element = payload.element || {};
@@ -77,26 +52,39 @@ export default {
         element.expressID ||
         '---'
       );
+    },
+    onComponentIfcSync(payload) {
+      this.currentMark = this.resolveComponentCode(payload);
+    },
+    onStorageChange(event) {
+      if (!event || event.key === 'current_component_mark') {
+        this.syncCurrentMarkFromStorage();
+      }
+    },
+    onCurrentComponentMarkChange() {
+      this.syncCurrentMarkFromStorage();
     }
   },
   data() {
     return {
-      viewMode: 'binocular',
       pageflag: true,
       currentMark: '---'
     };
   },
   created() {
     if (this.$bus) {
-      this.$bus.$on('component-ifc-sync', (p) => {
-        this.currentMark = this.resolveComponentCode(p);
-      });
+      this.$bus.$on('component-ifc-sync', this.onComponentIfcSync);
     }
-    const stored = localStorage.getItem('current_component_mark');
-    if (stored) this.currentMark = stored;
+    this.syncCurrentMarkFromStorage();
+  },
+  mounted() {
+    window.addEventListener('storage', this.onStorageChange);
+    window.addEventListener('current-component-mark-change', this.onCurrentComponentMarkChange);
   },
   beforeDestroy() {
-    if (this.$bus) this.$bus.$off('component-ifc-sync');
+    window.removeEventListener('storage', this.onStorageChange);
+    window.removeEventListener('current-component-mark-change', this.onCurrentComponentMarkChange);
+    if (this.$bus) this.$bus.$off('component-ifc-sync', this.onComponentIfcSync);
   }
 };
 </script>
@@ -111,50 +99,12 @@ export default {
   flex-direction: column;
   position: relative;
 
-  .mode_toggle {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 4px;
-    z-index: 5;
-
-    .toggle_item {
-      padding: 5px 12px;
-      font-size: 13px;
-      font-weight: 700;
-      color: #00baff;
-      background: rgba(0, 186, 255, 0.12);
-      border: 1px solid rgba(0, 186, 255, 0.35);
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.3s;
-
-      &:hover {
-        background: rgba(0, 186, 255, 0.25);
-      }
-
-      &.active {
-        background: #00baff;
-        color: #000;
-        font-weight: 900;
-      }
-    }
-  }
-
   .images_container {
     flex: 1;
     display: flex;
     gap: 8px;
     overflow: hidden;
-
-    &.binocular {
-      flex-direction: row;
-    }
-
-    &.monocular {
-      .img_box {
-        width: 100%;
-      }
-    }
+    flex-direction: row;
 
     .img_box {
       flex: 1;

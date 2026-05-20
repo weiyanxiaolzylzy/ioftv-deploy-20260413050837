@@ -16,7 +16,10 @@
         <div class="camera-grid">
           <div class="camera-item">
             <div class="camera-label camera-label--ifc">
-              <span>设计图（IFC）</span>
+              <div class="ifc-title-block">
+                <span class="ifc-title-main">构件模型</span>
+                <span class="ifc-title-code">{{ wsComponentTitle }}</span>
+              </div>
               <div v-if="todayPlanList.length > 0" class="ifc-plan-nav">
                 <button class="nav-btn" :disabled="currentPlanIndex <= 0" @click.stop="prevPlan">‹</button>
                 <span class="nav-count">{{ currentPlanIndex + 1 }}/{{ todayPlanList.length }}</span>
@@ -26,35 +29,43 @@
             <div class="camera-display ifc-display">
               <ComponentDetailViewport
                 v-if="currentPlanItem && currentPlanItem.ifcUrl && currentPlanItem.ifcElementId"
-                :key="'ws-cdv-' + currentPlanItem.ifcElementId"
+                :key="'ws-cdv-' + resolveAbsUrl(currentPlanItem.ifcUrl) + '-' + currentPlanItem.ifcElementId"
                 :ifcUrl="resolveAbsUrl(currentPlanItem.ifcUrl)"
+                :projectId="currentPlanItem.projectId || ''"
                 :expressID="Number(currentPlanItem.ifcElementId)"
+                :componentMark="currentPlanItem.componentMark || currentPlanItem.componentName || ''"
+                backgroundColor="#051020"
                 @loaded="onWsComponentLoaded"
                 @error="onWsComponentError"
               />
               <div v-else class="click-hint">
-                <div>暂无今日检测计划</div>
+                <div>暂无当前构件模型</div>
                 <div style="font-size:10px;margin-top:4px;color:#3a5370;">在「项目构件管理」中设置检测日期为今天</div>
               </div>
             </div>
           </div>
           <div class="camera-item">
-            <div class="camera-label">单目相机拍摄组图</div>
-            <div class="camera-display" @click="handleImageClick(1)">
-              <img v-if="cameraImages[1]" :src="cameraImages[1]" alt="单目相机" />
+            <div class="camera-label">点云视图</div>
+            <div class="camera-display ply-display">
+              <PlyViewer
+                ref="plyViewer3d"
+                :plyFileId="ply3dFileId"
+                :pointCloudData="ply3dPointCloudData"
+                :plyInfoData="ply3dInfoData"
+                :maxPoints="100000"
+                :voxelSize="0.01"
+                :emptyTitle="ply3dEmptyTitle"
+                :emptySub="ply3dEmptySub"
+                :showUpload="true"
+                backgroundColor="#0a0f1a"
+                @loaded="onPly3dLoaded"
+              />
             </div>
-            <input 
-              type="file" 
-              ref="fileInput1" 
-              @change="handleFileChange($event, 1)" 
-              accept="image/*" 
-              style="display: none" 
-            />
           </div>
           <div class="camera-item">
-            <div class="camera-label">双目相机拍摄组图</div>
+            <div class="camera-label">主相机视图</div>
             <div class="camera-display" @click="handleImageClick(2)">
-              <img v-if="cameraImages[2]" :src="cameraImages[2]" alt="双目相机" />
+              <img v-if="cameraImages[2]" :src="cameraImages[2]" alt="主相机" />
             </div>
             <input 
               type="file" 
@@ -65,20 +76,17 @@
             />
           </div>
           <div class="camera-item">
-            <div class="camera-label">3D相机拍摄组图</div>
-            <div class="camera-display ply-display">
-              <PlyViewer
-                ref="plyViewer3d"
-                :plyFileId="ply3dFileId"
-                :maxPoints="100000"
-                :voxelSize="0.01"
-                :emptyTitle="ply3dEmptyTitle"
-                :emptySub="ply3dEmptySub"
-                :showUpload="true"
-                backgroundColor="#0a0f1a"
-                @loaded="onPly3dLoaded"
-              />
+            <div class="camera-label">侧相机视图</div>
+            <div class="camera-display" @click="handleImageClick(1)">
+              <img v-if="cameraImages[1]" :src="cameraImages[1]" alt="侧相机" />
             </div>
+            <input 
+              type="file" 
+              ref="fileInput1" 
+              @change="handleFileChange($event, 1)" 
+              accept="image/*" 
+              style="display: none" 
+            />
           </div>
         </div>
       </div>
@@ -325,33 +333,22 @@
         </div>
       </div>
 
-      <!-- 批量选择后的构件管理器弹窗 -->
-      <ComponentManager
-        v-if="showComponentManager"
-        v-model="showComponentManager"
-        :project="componentManagerProject"
-        :ifcUrl="currentIfcUrl"
-        @save-all="onComponentManagerSave"
-        @batch-updated="onBatchUpdated"
-        @component-updated="onComponentUpdated"
-      />
     </div>
   </div>
 </template>
 
 <script>
-import AdvancedIfcViewer from '@/components/AdvancedIfcViewer.vue';
-import ComponentManager from '@/components/ComponentManager.vue';
 import ComponentDetailViewport from '@/components/ComponentDetailViewport.vue';
 import PlyViewer from '@/components/PlyViewer.vue';
 import axios from 'axios';
 import { canEditFeature, getAuthHeaders } from '@/utils'
+import { getSharedPlyPayload, isServerPlyFileId, setSharedPlyPayload } from '@/utils/plySyncStore'
+
+const PLY_SYNC_STORAGE_KEY = 'shared_ply_cloud_state';
 
 export default {
   name: 'WorkspaceView',
   components: {
-    AdvancedIfcViewer,
-    ComponentManager,
     ComponentDetailViewport,
     PlyViewer,
   },
@@ -401,10 +398,6 @@ export default {
       batchSelectMode: false,
       selectedBatchIds: [],
 
-      // ComponentManager 弹窗
-      showComponentManager: false,
-      componentManagerProject: null,
-
       // 当前班组信息
       currentGroupName: '',
       currentGroupPhoto: '',
@@ -416,6 +409,8 @@ export default {
       // 3D相机点云视图
       ply3dFileId: '',
       ply3dLoadedFileId: '',
+      ply3dPointCloudData: [],
+      ply3dInfoData: null,
       ply3dEmptyTitle: '暂无点云数据',
       ply3dEmptySub: '上传 PLY 文件查看 3D 点云',
     }
@@ -426,6 +421,11 @@ export default {
     },
     currentPlanItem() {
       return this.todayPlanList[this.currentPlanIndex] || null;
+    },
+    wsComponentTitle() {
+      const item = this.currentPlanItem
+      if (!item) return '---'
+      return item.componentMark || item.componentName || item.ifcGlobalId || item.ifcElementId || '---'
     }
   },
 
@@ -447,6 +447,7 @@ export default {
     this.fetchIfcList()
     this.loadTodayPlan()
     this.loadGroupFromStorage()
+    this.restorePlySyncState()
     if (this.$bus) {
       this.$bus.$on('current-plan-item-change', this.onPlanItemChange)
       this.$bus.$on('project-list-update', this.loadTodayPlan)
@@ -457,6 +458,7 @@ export default {
       this.$bus.$on('ply-cloud-loaded', this.onPlyCloudLoaded)
       this.$bus.$on('ply-cloud-load', this.onPlyCloudLoad)
     }
+    window.addEventListener('storage', this.onSharedStorageChange)
   },
   beforeDestroy() {
     if (this.timer) {
@@ -472,6 +474,7 @@ export default {
       this.$bus.$off('ply-cloud-loaded', this.onPlyCloudLoaded)
       this.$bus.$off('ply-cloud-load', this.onPlyCloudLoad)
     }
+    window.removeEventListener('storage', this.onSharedStorageChange)
   },
   methods: {
     notifyNoPermission() {
@@ -757,14 +760,18 @@ export default {
           this.todayPlanList = data.data.map((item) => ({
             projectName: item.project || '',
             projectId: item.projectId || '',
+            componentId: item.componentId || '',
             componentName: item.componentName || '',
+            componentMark: item.componentMark || '',
             ifcUrl: item.ifcUrl || '',
             ifcElementId: item.ifcElementId || '',
             teamName: item.teamName || '',
-            teamLeader: item.teamLeader || '',
-            qualityInspector: item.qualityInspector || '',
-            qualityManager: item.qualityManager || '',
+            teamLeader: item.team || '',
+            qualityInspector: item.inspector || '',
+            qualityManager: item.manager || '',
+            status: item.status || '待检测'
           }));
+          this.todayPlanList = this.todayPlanList.filter((item) => item.status !== '已出库');
           this.currentPlanIndex = 0;
           this.syncCurrentGroupFromPlan();
           return;
@@ -859,21 +866,89 @@ export default {
     onPly3dLoaded({ count, info }) {
       console.log(`[WorkspaceView] 3D PLY loaded: ${count} points`, info);
       this.ply3dLoadedFileId = this.ply3dFileId || `local-${Date.now()}`;
+      const payload = this.$refs.plyViewer3d && this.$refs.plyViewer3d.getSharedPointCloudPayload
+        ? this.$refs.plyViewer3d.getSharedPointCloudPayload()
+        : null;
+      if (payload) {
+        setSharedPlyPayload(payload);
+      }
+      this.persistPlySyncState({
+        fileId: isServerPlyFileId(this.ply3dFileId) ? this.ply3dFileId : '',
+        filename: this.ply3dEmptyTitle,
+        status: 'loaded',
+        syncSource: 'workspace-view',
+      });
     },
     onPlyCloudLoaded({ fileId, filename, info, syncSource }) {
       // 避免回环：只接受来自其他页面的同步（不处理自己发出的事件）
       if (syncSource && syncSource !== 'workspace-view') {
-        this.ply3dFileId = fileId;
+        this.ply3dFileId = isServerPlyFileId(fileId) ? fileId : '';
         this.ply3dEmptyTitle = filename || '点云已加载';
         this.ply3dEmptySub = `已从主页面同步: ${filename}`;
+        const sharedPayload = getSharedPlyPayload();
+        if (sharedPayload) {
+          this.ply3dPointCloudData = sharedPayload.pointCloudData || [];
+          this.ply3dInfoData = sharedPayload.plyInfoData || null;
+        }
+        this.persistPlySyncState({
+          fileId: isServerPlyFileId(fileId) ? fileId : '',
+          filename: this.ply3dEmptyTitle,
+          status: 'loaded',
+          syncSource,
+        });
       }
     },
     onPlyCloudLoad({ fileId, syncSource }) {
       if (syncSource && syncSource !== 'workspace-view') {
-        this.ply3dFileId = fileId;
+        this.ply3dFileId = isServerPlyFileId(fileId) ? fileId : '';
         this.ply3dEmptyTitle = '正在加载...';
         this.ply3dEmptySub = '从主页面同步点云数据';
+        this.persistPlySyncState({
+          fileId: isServerPlyFileId(fileId) ? fileId : '',
+          filename: this.ply3dEmptyTitle,
+          status: 'loading',
+          syncSource,
+        });
       }
+    },
+    onSharedStorageChange(e) {
+      if (e.key === PLY_SYNC_STORAGE_KEY) {
+        this.restorePlySyncState();
+      }
+    },
+    persistPlySyncState({ fileId, filename, status, syncSource }) {
+      if (!fileId) return;
+      try {
+        localStorage.setItem(PLY_SYNC_STORAGE_KEY, JSON.stringify({
+          fileId,
+          filename: filename || '点云已加载',
+          status: status || 'loaded',
+          syncSource: syncSource || 'workspace-view',
+          updatedAt: Date.now(),
+        }));
+      } catch (e) { /* ignore */ }
+    },
+    restorePlySyncState() {
+      try {
+        const sharedPayload = getSharedPlyPayload();
+        if (sharedPayload) {
+          this.ply3dPointCloudData = sharedPayload.pointCloudData || [];
+          this.ply3dInfoData = sharedPayload.plyInfoData || null;
+        }
+        const raw = localStorage.getItem(PLY_SYNC_STORAGE_KEY);
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        if (!state || !state.fileId) return;
+        this.ply3dFileId = state.fileId;
+        if (state.status === 'loaded') {
+          this.ply3dLoadedFileId = state.fileId;
+          this.ply3dEmptyTitle = state.filename || '点云已加载';
+          this.ply3dEmptySub = `已从主页面同步: ${state.filename || state.fileId}`;
+          return;
+        }
+        this.ply3dEmptyTitle = '正在加载...';
+        this.ply3dEmptySub = '从主页面同步点云数据';
+      } catch (e) { /* ignore */ }
     },
 
     // ─── IFC 构件交互 ───────────────────────────────────────────────────────
@@ -927,135 +1002,23 @@ export default {
     // ─── 批量选择模式 ─────────────────────────────────────────────────────
     toggleBatchSelectMode() {
       if (this.batchSelectMode) {
-        // 退出多选模式
-        if (this.selectedBatchIds.length > 0) {
-          // 有已选构件，打开 ComponentManager 进行批量指派
-          this.openComponentManagerForBatch();
-        } else {
-          this.batchSelectMode = false;
-          const viewer = this.$refs.ifcViewer;
-          if (viewer) viewer.clearMultiSelection();
-        }
+        this.batchSelectMode = false;
+        const viewer = this.$refs.ifcViewer;
+        if (viewer) viewer.clearMultiSelection();
+        this.selectedBatchIds = [];
       } else {
-        // 进入多选模式
         this.batchSelectMode = true;
         this.selectedBatchIds = [];
+        if (this.$Message && this.$Message.info) {
+          this.$Message.info('批量班组指派已迁移到“项目构件管理”页面，请从项目管理入口操作');
+        }
       }
     },
 
     onBatchSelected({ ids }) {
       this.selectedBatchIds = ids || [];
-      // 如果已经有选中的，直接打开管理器（用户点击"完成选择"）
     },
 
-    async openComponentManagerForBatch() {
-      if (this.selectedBatchIds.length === 0) return;
-
-      // 加载当前项目数据
-      const project = await this.loadCurrentProject();
-      if (!project) {
-        alert('未找到关联项目，请先在地图上选择项目');
-        this.batchSelectMode = false;
-        const viewer = this.$refs.ifcViewer;
-        if (viewer) viewer.clearMultiSelection();
-        this.selectedBatchIds = [];
-        return;
-      }
-
-      // 只保留与当前 IFC 模型中 expressID 匹配的构件
-      const matchedComponents = project.components ? project.components.filter(c =>
-        this.selectedBatchIds.some(id => String(id) === String(c.ifcElementId))
-      ) : [];
-
-      this.componentManagerProject = { ...project, components: matchedComponents };
-      this.showComponentManager = true;
-      this.batchSelectMode = false;
-
-      const viewer = this.$refs.ifcViewer;
-      if (viewer) viewer.clearMultiSelection();
-      this.selectedBatchIds = [];
-    },
-
-    async loadCurrentProject() {
-      try {
-        const res = await fetch('/api/projects', { headers: getAuthHeaders() });
-        const data = await res.json();
-        if (data && data.success && Array.isArray(data.data)) {
-          const normalizeUrl = (u) => {
-            const s = String(u || '').trim();
-            if (!s) return '';
-            return s.replace(/^https?:\/\/[^/]+/i, '').replace(/\/$/, '');
-          };
-          const current = normalizeUrl(this.currentIfcUrl);
-          return data.data.find(p => normalizeUrl(p.ifcUrl) === current) || data.data[0] || null;
-        }
-      } catch (e) {
-        console.error('加载项目数据失败', e);
-      }
-      return null;
-    },
-
-    // ComponentManager 保存后的回调
-    async onComponentManagerSave(project) {
-      // 保存到后端
-      try {
-        const res = await fetch(`/api/projects/${project.id}/components`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({ components: project.components })
-        });
-        const data = await res.json();
-        if (data && data.success) {
-          this.$Message && this.$Message.success('保存成功');
-          // 通知主页面刷新数据
-          if (this.$bus) {
-            this.$bus.$emit('project-list-update');
-            this.$bus.$emit('project-change', project);
-          }
-        } else {
-          this.$Message && this.$Message.error('保存失败');
-        }
-      } catch (e) {
-        this.$Message && this.$Message.error('保存失败');
-      }
-    },
-
-    onBatchUpdated(components) {
-      // 批量指派完成，同步到后端并通知主页面
-      if (!this.componentManagerProject) return
-      this.saveProjectToBackend(this.componentManagerProject)
-      if (this.$bus) {
-        this.$bus.$emit('project-list-update')
-      }
-    },
-
-    onComponentUpdated(component) {
-      // 单个构件更新，同步到后端
-      if (this.componentManagerProject) {
-        this.saveProjectToBackend(this.componentManagerProject)
-      }
-      if (this.$bus) {
-        this.$bus.$emit('project-list-update')
-      }
-    },
-
-    async saveProjectToBackend(project) {
-      try {
-        const res = await fetch(`/api/projects/${project.id}/components`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({ components: project.components })
-        })
-        const data = await res.json()
-        if (data && data.success) {
-          this.$Message && this.$Message.success('保存成功')
-        } else {
-          this.$Message && this.$Message.error('保存失败')
-        }
-      } catch (e) {
-        this.$Message && this.$Message.error('保存失败')
-      }
-    }
   }
 };
 </script>
@@ -1148,6 +1111,31 @@ export default {
         &.camera-label--ifc {
           justify-content: space-between;
           padding: 0 8px;
+        }
+
+        .ifc-title-block {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          flex: 1;
+          overflow: hidden;
+        }
+
+        .ifc-title-main {
+          flex-shrink: 0;
+          color: #dff6ff;
+          font-weight: 700;
+          letter-spacing: 1px;
+        }
+
+        .ifc-title-code {
+          color: #00d4ff;
+          font-size: 11px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 220px;
         }
 
         .ifc-plan-nav {

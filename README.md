@@ -1,58 +1,96 @@
-# IOFTV Deploy Project
+# IOFTV
 
 ## Overview
 
-This repository contains three parts:
+This repository is a steel-structure visualization and quality-inspection project.
 
-- `src/`: Vue 2 big-screen frontend
-- `server/`: Node.js backend for `/api/*`
-- `ifc/`: standalone IFC viewer
+Main parts:
 
-Production deployment currently follows this structure:
+- `src/`: Vue 2 frontend
+- `server/`: Express backend
+- `ifc/`: standalone IFC viewer related assets
 
-- Nginx serves `/opt/ioftv/dist`
-- Nginx proxies `/api/*` and `/bigscreen/*` to Node on `8890`
-- Nginx serves `/ifc/*` from `/opt/ioftv/ifc/dist`
+The current active backend database path is PostgreSQL.
+
+## Read This First
+
+If you are editing code with Codex, read these files first:
+
+- `AGENTS.md`
+- `docs/project-context.md`
+
+Those files define the current project workflow and the separation between local development and server deployment.
+
+## Important Workflow Rule
+
+Do not mix local development with server deployment.
+
+### Local development
+
+Local development is the default workflow for normal coding and debugging.
+
+Use:
+
+```bash
+npm install
+npm run serve
+npm run server:dev
+```
+
+Default local addresses:
+
+- frontend: `http://localhost:8080` or the Vue CLI port shown in terminal
+- backend: `http://127.0.0.1:8890`
+
+Local development does not require Docker by default.
+
+### Server deployment
+
+Docker is used for deployment on the server.
+
+Use Docker when:
+
+- packaging the app for the server
+- running the deployed service on the server
+- connecting the deployed app to the server PostgreSQL
+
+Do not switch normal local development to Docker unless explicitly needed.
 
 ## Main Directories
 
 ```text
 .
-├── src/                    Vue frontend source
-├── server/                 Node backend source
-├── ifc/                    IFC viewer source
-├── dist/                   frontend build output
-├── 上传/                   prepared deployment package
-├── DEPLOY_49.232.136.57.md deployment notes for current server
-└── public/                 shared static assets
+├── src/                    frontend source
+├── server/                 backend source
+├── ifc/                    IFC viewer assets / project
+├── public/                 shared static assets
+├── banzu/                  team photos
+├── 单个构件质检表/         QC Excel templates
+├── docs/                   project docs
+├── Dockerfile              server deployment image
+├── docker-compose.yml      server deployment compose file
+└── 部署.md                 server deployment steps
 ```
 
 ## Local Development
 
-Install dependencies:
+Install dependencies at project root:
 
 ```bash
 npm install
-cd server && npm install
-cd ../ifc && npm install
 ```
 
-Start the main frontend:
+Start frontend:
 
 ```bash
 npm run serve
 ```
 
-Start the Node backend:
+Start backend:
 
 ```bash
 npm run server:dev
 ```
-
-Default local ports:
-
-- frontend: `http://localhost:8081`
-- node api: `http://127.0.0.1:8890`
 
 Backend health check:
 
@@ -62,26 +100,54 @@ curl http://127.0.0.1:8890/health
 
 ## Build
 
-Build the frontend:
+Build frontend:
 
 ```bash
 npm run build
 ```
 
-Build the IFC viewer:
+Build IFC viewer if needed:
 
 ```bash
 cd ifc
 npm run build
 ```
 
+## Deployment
+
+Server deployment uses Docker.
+
+Main files:
+
+- `Dockerfile`
+- `docker-compose.yml`
+- `部署.md`
+
+Typical deployed app port:
+
+- `8890`
+
+Common access examples:
+
+- LAN: `http://192.168.60.10:8890`
+- Tailscale: `http://100.104.212.6:8890`
+
+For demos and acceptance:
+
+- prefer LAN access first
+- use Tailscale as a remote-access path, not the preferred performance path
+
+Detailed deployment instructions:
+
+- [部署.md](./部署.md)
+
 ## IFC Upload Parsing
 
-Large IFC files previously blocked the main Node process because upload and parse happened in the same request.
+Large IFC files are handled asynchronously.
 
-Current implementation:
+Current flow:
 
-- `POST /api/upload-ifc` uploads the file and returns immediately
+- `POST /api/upload-ifc` uploads the file and returns quickly
 - backend creates a parse job
 - frontend polls `GET /api/upload-ifc-status/:jobId`
 - IFC parsing runs in a child process
@@ -93,56 +159,18 @@ Related files:
 - `server/ifc-parse-worker.js`
 - `src/views/indexs/center-map.vue`
 
-This avoids long synchronous parsing from causing `504 Gateway Time-out`.
+## Known Notes
 
-## Production Deployment
-
-Prepared deployment package:
-
-```text
-上传/
-```
-
-Typical upload targets:
-
-- `/opt/ioftv/dist/`
-- `/opt/ioftv/server/`
-- `/opt/ioftv/ifc/dist/`
-
-Server-side service summary:
-
-- Node API: `pm2`
-- reverse proxy: `nginx`
-
-Detailed deployment steps:
-
-- [DEPLOY_49.232.136.57.md](./DEPLOY_49.232.136.57.md)
-
-## Nginx Notes
-
-Recommended for large IFC uploads:
-
-```nginx
-client_max_body_size 500m;
-
-location /api/ {
-    proxy_pass http://127.0.0.1:8890;
-    proxy_connect_timeout 600s;
-    proxy_send_timeout 600s;
-    proxy_read_timeout 600s;
-    send_timeout 600s;
-}
-```
-
-## Current Known Non-blocking Issues
-
-- some `/uploads/*.png` files may be missing
-- websocket connection for real-time detection may fail if the WS relay is not deployed
-- IFC parsing still takes time for very large files, but it should no longer block the whole API process
+- Large frontend chunks can time out on slow remote links
+- LAN access is preferred over Tailscale for smoother demos
+- Static asset paths must be checked carefully in production builds
+- IFC-related pages can be heavy because of 3D assets and model parsing
 
 ## Git Notes
 
-This workspace contains many generated and temporary files. Avoid using:
+This workspace contains generated and temporary files.
+
+Avoid:
 
 ```bash
 git add .

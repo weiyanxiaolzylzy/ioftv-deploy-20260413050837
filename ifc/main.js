@@ -1,6 +1,7 @@
- import * as THREE from 'three';
+import * as THREE from 'three';
 import { IfcViewerAPI } from 'web-ifc-viewer';
 import * as WebIFC from 'web-ifc';
+import { buildAssemblyChildrenMap, resolveExpressIdsForGeometry } from './assembly-geometry.mjs';
 
 function getWasmBaseUrl() {
     return new URL('./wasm/', window.location.href).href;
@@ -154,10 +155,6 @@ const modalTitle = document.getElementById('modal-title');
 const modalBody = document.getElementById('modal-body');
 const modalClose = document.getElementById('modal-close');
 
-// 状态栏元素
-const wsDot = document.getElementById('ws-dot');
-const wsText = document.getElementById('ws-text');
-
 // ============================================================
 // 4. 全局状态
 // ============================================================
@@ -170,25 +167,24 @@ let componentMarkLoadPromise = null;
 let componentMarkLookup = new Map();
 let assemblySummaryLoadPromise = null;
 let assemblySummaryLookup = new Map();
+let assemblyChildrenLookup = new Map();
 let currentHighlightReason = null; // 检测原因
 let multiSelectMode = false; // 多选模式开关（3D 点击多选，由父页开启）
 let selectedIds = []; // 多选模式下已选中的 expressID 集合
 const MULTI_SELECT_COLOR = new THREE.Color(0xff8800); // 橙色高亮
 /** 构件列表复选框多选（与 3D 多选独立） */
 const checkboxSelectedIds = new Set();
+const disabledCheckboxIds = new Set();
 /** 父页面 postMessage 待执行的构件聚焦（模型未就绪时排队） */
 let pendingSelectFromParent = null;
 /** 仅显示单个构件：隐藏合并后的整模 mesh，只保留提取出的构件几何（由 URL componentIsolate=1 或 postMessage 开启） */
 let isolateComponentView = false;
+let lightElementPanelMode = false;
+let minimalMode = false;
+let databaseIndexMode = false;
+let currentProjectId = '';
 /** 当前是否已隐藏整模（用于 clearSelection / 加载新模时恢复） */
 let isolateHideBaseModel = false;
-
-// ============================================================
-// 5. WebSocket 客户端
-// ============================================================
-let ws = null;
-let wsReconnectTimer = null;
-const WS_URL = 'ws://localhost:8080'; // WebSocket 中转服务地址
 
 // ============================================================
 // 5b. 父页面消息通信（postMessage）
@@ -208,7 +204,12 @@ window.addEventListener('message', async (event) => {
             const eid = Number(data.expressID);
             if (!Number.isFinite(eid)) break;
             const isolateOnly = data.isolateOnly === true || isolateComponentView;
-            pendingSelectFromParent = { expressID: eid, focus: data.focus !== false, isolateOnly };
+            pendingSelectFromParent = {
+                expressID: eid,
+                componentMark: (data.componentMark || '').trim(),
+                focus: data.focus !== false,
+                isolateOnly
+            };
             await tryApplyPendingSelectFromParent();
             break;
         }
@@ -243,14 +244,41 @@ window.addEventListener('message', async (event) => {
             }
             break;
         }
+        case 'disabled-checkbox-ids': {
+            disabledCheckboxIds.clear();
+            const incoming = Array.isArray(data.ids) ? data.ids : [];
+            incoming
+                .map(Number)
+                .filter((id) => Number.isFinite(id))
+                .forEach((id) => disabledCheckboxIds.add(id));
+            for (const id of Array.from(checkboxSelectedIds)) {
+                if (disabledCheckboxIds.has(id)) {
+                    checkboxSelectedIds.delete(id);
+                }
+            }
+            renderElementsList();
+            emitListCheckboxSelection();
+            break;
+        }
     }
 });
 
 async function tryApplyPendingSelectFromParent() {
     if (!pendingSelectFromParent || currentModelID == null) return;
-    const { expressID, focus, isolateOnly } = pendingSelectFromParent;
-    if (!elementIndex.some((r) => r.expressID === expressID)) return;
-    const row = elementIndex.find((r) => r.expressID === expressID);
+    const { expressID, componentMark, focus, isolateOnly } = pendingSelectFromParent;
+    let row = elementIndex.find((r) => r.expressID === expressID);
+    if (!row && lightElementPanelMode) {
+        row = {
+            expressID,
+            globalId: '',
+            name: `构件 ${expressID}`,
+            componentMark: componentMark || '',
+            type: ''
+        };
+    } else if (row && componentMark && !row.componentMark) {
+        row.componentMark = componentMark;
+    }
+    if (!row) return;
     pendingSelectFromParent = null;
     /* 构件模型区：用「小窗」逻辑只显示单构件 mesh，不用整模高亮 */
     if (document.body.classList.contains('embed-element-panel') && row) {
@@ -266,19 +294,104 @@ async function tryApplyPendingSelectFromParent() {
 function applyEmbedModeFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const embed = (params.get('embed') || '').trim();
+    const dataSource = (params.get('dataSource') || '').trim().toLowerCase();
+    currentProjectId = (params.get('projectId') || '').trim();
     if (embed === 'minimal') {
         document.body.classList.add('embed-minimal');
+        minimalMode = true;
     } else if (embed === 'dashboard') {
         document.body.classList.add('embed-dashboard');
     } else if (embed === 'element-panel') {
         /* 大屏「构件模型」专用：主视口隐藏仅用于拾取/提取，可见区域为底部同款「小窗」全屏，只显示单根构件三角网 */
         document.body.classList.add('embed-element-panel');
+        lightElementPanelMode = true;
         /* 延迟等 DOM 小窗容器就绪后再挂监听 */
         setTimeout(() => {
             attachElementPanelPickListeners();
         }, 300);
     }
+    databaseIndexMode = dataSource === 'db' && !!currentProjectId;
     isolateComponentView = params.get('componentIsolate') === '1';
+}
+
+async function buildDatabaseBackedElementIndex(projectId) {
+    const pid = String(projectId || '').trim();
+    if (!pid) return false;
+
+    elementsContainer.innerHTML = '<p class="placeholder">正在读取项目构件索引…</p>';
+    elementIndex = [];
+    componentMarkLookup = new Map();
+    componentMarkLoadPromise = null;
+    assemblySummaryLookup = new Map();
+    assemblySummaryLoadPromise = null;
+    assemblyChildrenLookup = new Map();
+
+    try {
+        const response = await fetch(`/api/projects/${encodeURIComponent(pid)}/components/marks`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload || !payload.success || !Array.isArray(payload.data)) {
+            throw new Error((payload && payload.message) || '读取项目构件索引失败');
+        }
+
+        const rows = payload.data
+            .map((item) => {
+                const expressID = Number(item && item.expressID);
+                if (!Number.isFinite(expressID) || expressID <= 0) return null;
+                const componentMark = item && item.componentMark ? String(item.componentMark).trim() : '';
+                const name = item && item.name ? String(item.name).trim() : '';
+                const row = {
+                    expressID,
+                    globalId: '',
+                    name: componentMark || name || `构件 ${expressID}`,
+                    type: item && item.ifcType ? String(item.ifcType).trim() : '',
+                    componentMark,
+                    childExpressIDs: Array.isArray(item && item.childExpressIDs)
+                        ? item.childExpressIDs.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+                        : [],
+                    parentAssemblyExpressID: item && item.parentAssemblyExpressID != null
+                        ? Number(item.parentAssemblyExpressID)
+                        : null
+                };
+
+                if (componentMark) {
+                    componentMarkLookup.set(String(expressID), componentMark);
+                }
+
+                const summary = {
+                    componentMark,
+                    positionCode: item && item.positionCode ? String(item.positionCode).trim() : '',
+                    bottomElevation: item && item.bottomElevation ? String(item.bottomElevation).trim() : '',
+                    topElevation: item && item.topElevation ? String(item.topElevation).trim() : '',
+                    length: item && item.length != null ? Number(item.length) : null,
+                    width: item && item.width != null ? Number(item.width) : null,
+                    area: item && item.area != null ? Number(item.area) : null,
+                    castUnitWeight: item && item.castUnitWeight != null ? Number(item.castUnitWeight) : null,
+                    weightNet: item && item.weightNet != null ? Number(item.weightNet) : null,
+                    weightGross: item && item.weightGross != null ? Number(item.weightGross) : null,
+                    material: item && item.material ? String(item.material).trim() : '',
+                    mainSpec: item && item.spec ? String(item.spec).trim() : '',
+                    mainReference: item && item.mainReference ? String(item.mainReference).trim() : ''
+                };
+                assemblySummaryLookup.set(String(expressID), summary);
+                return row;
+            })
+            .filter(Boolean);
+
+        rows.sort((a, b) => {
+            const aLabel = getElementLabel(a);
+            const bLabel = getElementLabel(b);
+            return aLabel.localeCompare(bLabel, 'zh-Hans-CN');
+        });
+
+        elementIndex = rows;
+        assemblyChildrenLookup = buildAssemblyChildrenMap(rows);
+        renderElementsList();
+        return true;
+    } catch (e) {
+        console.error('[DBIndex] 读取项目构件索引失败:', e);
+        elementsContainer.innerHTML = '<p class="placeholder">项目构件索引加载失败</p>';
+        return false;
+    }
 }
 
 function setIfcBaseModelsVisible(visible) {
@@ -294,106 +407,6 @@ function restoreIfcBaseModelsIfIsolated() {
         setIfcBaseModelsVisible(true);
         isolateHideBaseModel = false;
     }
-}
-
-function connectWebSocket() {
-    if (ws && ws.readyState === WebSocket.OPEN) return;
-
-    updateWsStatus('connecting');
-
-    try {
-        ws = new WebSocket(WS_URL);
-
-        ws.onopen = () => {
-            console.log('已连接到检测系统');
-            updateWsStatus('connected');
-            if (wsReconnectTimer) {
-                clearTimeout(wsReconnectTimer);
-                wsReconnectTimer = null;
-            }
-            // 注册为 viewer 客户端
-            ws.send(JSON.stringify({ type: 'viewer' }));
-        };
-
-        ws.onmessage = async (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log('收到检测系统消息:', data);
-                await handleDetectionMessage(data);
-            } catch (e) {
-                console.error('解析消息失败:', e);
-            }
-        };
-
-        ws.onclose = () => {
-            console.log('WebSocket 连接断开');
-            updateWsStatus('disconnected');
-            // 自动重连
-            wsReconnectTimer = setTimeout(connectWebSocket, 3000);
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket 错误:', error);
-            updateWsStatus('error');
-        };
-    } catch (e) {
-        console.error('创建 WebSocket 失败:', e);
-        updateWsStatus('error');
-        wsReconnectTimer = setTimeout(connectWebSocket, 5000);
-    }
-}
-
-function updateWsStatus(status) {
-    wsDot.className = 'status-dot ' + status;
-    switch (status) {
-        case 'connected':
-            wsText.textContent = '已连接检测系统';
-            break;
-        case 'connecting':
-            wsText.textContent = '正在连接...';
-            break;
-        case 'disconnected':
-            wsText.textContent = '未连接检测系统';
-            break;
-        case 'error':
-            wsText.textContent = '连接失败';
-            break;
-    }
-}
-
-// 处理检测系统发来的消息
-async function handleDetectionMessage(data) {
-    if (data.action === 'highlight') {
-        const globalId = data.globalId;
-        const reason = data.reason || '检测异常';
-
-        if (!globalId) {
-            console.warn('消息缺少 globalId');
-            return;
-        }
-
-        currentHighlightReason = reason;
-        await highlightElementByGlobalId(globalId, reason);
-    }
-}
-
-// 根据 GlobalId 高亮构件
-async function highlightElementByGlobalId(globalId, reason) {
-    const row = elementIndex.find(r => r.globalId === globalId);
-
-    if (!row) {
-        console.warn(`未找到 GlobalId: ${globalId}`);
-        return;
-    }
-
-    // 在主视图中高亮选中
-    await selectAndShowElement(currentModelID, row.expressID, true);
-
-    // 显示详情弹窗
-    showDetailModal(row, reason);
-
-    // 在小窗口中显示该构件的 3D 模型
-    await showElementInSmallViewer(row);
 }
 
 // ============================================================
@@ -636,9 +649,7 @@ async function showElementInSmallViewer(row) {
     }
 
     // 显示底部全宽聚焦带
-    viewerWindowTitle.textContent = row.name
-        ? `构件预览 — ${row.name}`
-        : `聚焦视图 — ${row.globalId || row.expressID}`;
+    viewerWindowTitle.textContent = getElementLabel(row);
     /* element-panel 模式下主视口已隐藏，勿再压缩布局 */
     if (!document.body.classList.contains('embed-element-panel')) {
         document.body.classList.add('element-viewer-open');
@@ -949,13 +960,6 @@ input.addEventListener('change', async (event) => {
         elementCount: elementIndex.length
     });
 
-    if (!document.body.classList.contains('embed-minimal')) {
-        connectWebSocket();
-    } else {
-        updateWsStatus('disconnected');
-        if (wsText) wsText.textContent = '大屏嵌入模式';
-    }
-
     // 标记 mesh 与 expressID 的关联（延迟确保模型完全渲染）
     setTimeout(() => {
         grayOutModel(currentModelID);
@@ -1093,6 +1097,7 @@ async function buildElementIndex() {
     elementIndex = [];
     componentMarkLookup = new Map();
     componentMarkLoadPromise = null;
+    assemblyChildrenLookup = new Map();
 
     const ifcAPI = viewer.IFC?.loader?.ifcManager?.ifcAPI;
     if (!ifcAPI) {
@@ -1161,7 +1166,14 @@ async function buildElementIndex() {
                 const typeCode = line.type;
                 const type = typeof typeCode === 'number' ? (ifcAPI.GetNameFromTypeCode(typeCode) || '') : '';
                 const componentMark = type === 'IFCELEMENTASSEMBLY' ? (tag || '') : '';
-                return { expressID, globalId, name, type, componentMark };
+                return {
+                    expressID,
+                    globalId,
+                    name,
+                    type,
+                    componentMark,
+                    parentAssemblyExpressID: null
+                };
             } catch {
                 return null;
             }
@@ -1177,6 +1189,7 @@ async function buildElementIndex() {
 
     rows.sort((a, b) => a.globalId.localeCompare(b.globalId));
     elementIndex = rows;
+    assemblyChildrenLookup = buildAssemblyChildrenMap(rows);
     renderElementsList();
 
     // 后台补充属性集里的编号映射，作为 Tag 为空时的兜底。
@@ -1240,6 +1253,7 @@ async function lazyLoadComponentMarks(modelID) {
             } catch {}
         }
         console.log('[ComponentMark] 找到', assemblyChildren.size, '个 IFCELEMENTASSEMBLY');
+        assemblyChildrenLookup = assemblyChildren;
 
         const assemblyTagMap = new Map();
         for (const [assemblyId, childIds] of assemblyChildren) {
@@ -1347,6 +1361,18 @@ async function lazyLoadComponentMarks(modelID) {
             row.componentMark = mark;
             componentMarkLookup.set(String(row.expressID), mark);
             updated++;
+        }
+    }
+
+    if (assemblyChildrenLookup && assemblyChildrenLookup.size) {
+        const rowByExpressId = new Map(elementIndex.map((row) => [Number(row.expressID), row]));
+        for (const [parentId, childIds] of assemblyChildrenLookup.entries()) {
+            for (const childId of childIds) {
+                const childRow = rowByExpressId.get(Number(childId));
+                if (childRow) {
+                    childRow.parentAssemblyExpressID = Number(parentId);
+                }
+            }
         }
     }
 
@@ -1610,10 +1636,15 @@ function appendElementsToList(rows) {
         cb.type = 'checkbox';
         cb.className = 'element-row-check';
         cb.checked = checkboxSelectedIds.has(row.expressID);
+        cb.disabled = disabledCheckboxIds.has(row.expressID);
         cb.title = '勾选后可批量指派班组/质检信息';
         cb.addEventListener('click', (e) => e.stopPropagation());
         cb.addEventListener('change', (e) => {
             e.stopPropagation();
+            if (cb.disabled) {
+                cb.checked = false;
+                return;
+            }
             if (cb.checked) {
                 checkboxSelectedIds.add(row.expressID);
             } else {
@@ -1798,29 +1829,8 @@ function buildColoredMesh(model, expressID, color) {
     const expressIDAttr = geo.attributes && geo.attributes.expressID;
     if (!expressIDAttr) return null;
 
-    const indexArray = geo.index ? geo.index.array : null;
-    const faceVertexIndices = [];
-
-    if (indexArray) {
-        for (let i = 0; i < indexArray.length; i += 3) {
-            const i0 = indexArray[i];
-            const i1 = indexArray[i + 1];
-            const i2 = indexArray[i + 2];
-            if (expressIDAttr.getX(i0) === expressID &&
-                expressIDAttr.getX(i1) === expressID &&
-                expressIDAttr.getX(i2) === expressID) {
-                faceVertexIndices.push(i0, i1, i2);
-            }
-        }
-    } else {
-        for (let i = 0; i < expressIDAttr.count; i += 3) {
-            if (expressIDAttr.getX(i) === expressID &&
-                expressIDAttr.getX(i + 1) === expressID &&
-                expressIDAttr.getX(i + 2) === expressID) {
-                faceVertexIndices.push(i, i + 1, i + 2);
-            }
-        }
-    }
+    const targetExpressIds = resolveExpressIdsForGeometry(expressID, assemblyChildrenLookup);
+    const faceVertexIndices = collectFaceVertexIndices(geo, targetExpressIds);
 
     if (faceVertexIndices.length === 0) return null;
 
@@ -1881,36 +1891,19 @@ function buildGreenMesh(modelID, expressID) {
         return null;
     }
 
-    // 收集属于该 expressID 的顶点索引
-    const indexArray = geo.index ? geo.index.array : null;
-    const faceVertexIndices = [];
-
-    if (indexArray) {
-        for (let i = 0; i < indexArray.length; i += 3) {
-            const i0 = indexArray[i];
-            const i1 = indexArray[i + 1];
-            const i2 = indexArray[i + 2];
-            if (expressIDAttr.getX(i0) === expressID &&
-                expressIDAttr.getX(i1) === expressID &&
-                expressIDAttr.getX(i2) === expressID) {
-                faceVertexIndices.push(i0, i1, i2);
-            }
-        }
-    } else {
-        for (let i = 0; i < expressIDAttr.count; i += 3) {
-            if (expressIDAttr.getX(i) === expressID &&
-                expressIDAttr.getX(i + 1) === expressID &&
-                expressIDAttr.getX(i + 2) === expressID) {
-                faceVertexIndices.push(i, i + 1, i + 2);
-            }
-        }
-    }
+    const targetExpressIds = resolveExpressIdsForGeometry(expressID, assemblyChildrenLookup);
+    const faceVertexIndices = collectFaceVertexIndices(geo, targetExpressIds);
 
     if (faceVertexIndices.length === 0) {
-        console.warn('buildGreenMesh: 未匹配到任何三角面', { expressID, totalTris: indexArray ? indexArray.length / 3 : expressIDAttr.count / 3 });
+        const indexArray = geo.index ? geo.index.array : null;
+        console.warn('buildGreenMesh: 未匹配到任何三角面', {
+            expressID,
+            targetExpressIds,
+            totalTris: indexArray ? indexArray.length / 3 : expressIDAttr.count / 3
+        });
         return null;
     }
-    console.log('buildGreenMesh: 匹配到', faceVertexIndices.length / 3, '个三角面, expressID:', expressID);
+    console.log('buildGreenMesh: 匹配到', faceVertexIndices.length / 3, '个三角面, expressID:', expressID, 'targetExpressIds:', targetExpressIds);
 
     // 复制顶点坐标和法线
     const posAttr = geo.attributes.position;
@@ -1955,6 +1948,42 @@ function buildGreenMesh(modelID, expressID) {
     mesh.renderOrder = 1;
 
     return mesh;
+}
+
+function collectFaceVertexIndices(geo, expressIDs) {
+    const expressIDAttr = geo && geo.attributes && geo.attributes.expressID;
+    if (!expressIDAttr) return [];
+
+    const targetIds = new Set((Array.isArray(expressIDs) ? expressIDs : [expressIDs])
+        .map(Number)
+        .filter((id) => Number.isFinite(id)));
+    if (!targetIds.size) return [];
+
+    const indexArray = geo.index ? geo.index.array : null;
+    const faceVertexIndices = [];
+
+    if (indexArray) {
+        for (let i = 0; i < indexArray.length; i += 3) {
+            const i0 = indexArray[i];
+            const i1 = indexArray[i + 1];
+            const i2 = indexArray[i + 2];
+            if (targetIds.has(expressIDAttr.getX(i0)) &&
+                targetIds.has(expressIDAttr.getX(i1)) &&
+                targetIds.has(expressIDAttr.getX(i2))) {
+                faceVertexIndices.push(i0, i1, i2);
+            }
+        }
+    } else {
+        for (let i = 0; i < expressIDAttr.count; i += 3) {
+            if (targetIds.has(expressIDAttr.getX(i)) &&
+                targetIds.has(expressIDAttr.getX(i + 1)) &&
+                targetIds.has(expressIDAttr.getX(i + 2))) {
+                faceVertexIndices.push(i, i + 1, i + 2);
+            }
+        }
+    }
+
+    return faceVertexIndices;
 }
 
 // 将模型整体设为灰色
@@ -2373,7 +2402,6 @@ function buildChineseSummaryProps(summary, row = null) {
 }
 
 // ============================================================
-// 14. 启动时自动连接 WebSocket
 // ============================================================
 console.log('IFC 查看器已加载，等待上传模型...');
 
@@ -2415,22 +2443,19 @@ async function loadIfcFromUrl(ifcUrl) {
         }
 
         propsContainer.innerHTML = '<p class="placeholder">双击构件以查看属性</p>';
-        await buildElementIndex();
+        if (databaseIndexMode) {
+            await buildDatabaseBackedElementIndex(currentProjectId);
+        } else if (!lightElementPanelMode && !minimalMode) {
+            await buildElementIndex();
+        }
 
         await tryApplyPendingSelectFromParent();
 
         postToParent({
             type: 'model-loaded',
             modelID: currentModelID,
-            elementCount: elementIndex.length
+            elementCount: (lightElementPanelMode || minimalMode) ? 0 : elementIndex.length
         });
-
-        if (!document.body.classList.contains('embed-minimal')) {
-            connectWebSocket();
-        } else {
-            updateWsStatus('disconnected');
-            if (wsText) wsText.textContent = '大屏嵌入模式';
-        }
 
         setTimeout(() => {
             grayOutModel(currentModelID);

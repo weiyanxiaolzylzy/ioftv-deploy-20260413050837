@@ -31,7 +31,7 @@
                   <option value="">-- 请选择 --</option>
                   <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
                 </select>
-                <button v-if="canEditGroups" @click="openGroupManager" class="manage-btn">管理</button>
+                <button v-if="canEditGroups" @click="openGroupSettingsPanel" class="manage-btn">管理</button>
               </div>
             </div>
 
@@ -44,15 +44,9 @@
               <label>装配合格率 (%)</label>
               <input type="number" v-model.number="editForm.passingRate" class="modal-input" step="0.1" :disabled="!canEditPioneer" />
             </div>
-
-            <div class="form-item">
-              <label>更换照片</label>
-              <div class="file-input-wrapper">
-                <input type="file" @change="handleFileChange" accept="image/*" class="file-input" :disabled="!canEditPioneer" />
-                <div class="file-preview" v-if="editForm.photoPreview">
-                  <img :src="editForm.photoPreview" alt="Preview" />
-                </div>
-              </div>
+            <div class="form-item form-tip-block">
+              <label>班组照片</label>
+              <div class="inline-tip">照片请到“班组设置”里统一维护，这里不再单独上传。</div>
             </div>
           </template>
 
@@ -64,7 +58,7 @@
                   <option value="">-- 请选择 --</option>
                   <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
                 </select>
-                <button v-if="canEditGroups" @click="openGroupManager" class="manage-btn">管理</button>
+                <button v-if="canEditGroups" @click="openGroupSettingsPanel" class="manage-btn">管理</button>
               </div>
             </div>
 
@@ -86,31 +80,9 @@
         </div>
       </div>
 
-      <!-- 班组管理弹窗 -->
-      <div v-if="showGroupManager" class="group-manager-modal">
-        <div class="manager-content">
-          <div class="manager-header">
-            <h3>班组管理</h3>
-            <span class="close-icon" @click="closeGroupManager">×</span>
-          </div>
-          
-          <div class="group-list">
-            <div v-if="groups.length === 0" class="empty-tip">暂无预设班组</div>
-            <div v-for="g in groups" :key="g.id" class="group-item">
-              <img :src="g.photoUrl" class="group-img">
-              <span class="group-name">{{ g.name }}</span>
-              <span v-if="canEditGroups" class="delete-btn" @click="deleteGroup(g.id)">删除</span>
-            </div>
-          </div>
-          
-          <div class="add-group-form" v-if="canEditGroups">
-            <input type="text" v-model="newGroup.name" placeholder="班组名称" class="name-input">
-            <div class="file-select-box">
-               <button @click="$refs.newGroupFile.click()" class="file-btn">{{ newGroup.file ? '已选图' : '选图' }}</button>
-               <input type="file" ref="newGroupFile" style="display:none" @change="handleNewGroupFile" accept="image/*">
-            </div>
-            <button @click="addGroup" class="add-btn">添加</button>
-          </div>
+      <div v-if="showGroupSettingsPanel" class="group-settings-overlay">
+        <div class="group-settings-modal">
+          <GroupSettingsView @close="closeGroupSettingsPanel" />
         </div>
       </div>
 
@@ -137,8 +109,12 @@
 
 <script>
 import { canEditFeature, getAuthHeaders } from '@/utils'
+import GroupSettingsView from '@/views/secondview/group-settings-view.vue'
 
 export default {
+  components: {
+    GroupSettingsView
+  },
   data() {
     return {
       isLightTheme: false,
@@ -161,21 +137,10 @@ export default {
         passingRate: 0,
         photoUrl: '/people.jpg'
       },
-      rankingList: [
-        { name: '一班组', value: 99.2 },
-        { name: '二班组', value: 98.5 },
-        { name: '三班组', value: 97.8 },
-        { name: '四班组', value: 96.5 },
-        { name: '五班组', value: 95.2 }
-      ],
-      // 班组管理相关
-      showGroupManager: false,
+      rankingList: [],
+      showGroupSettingsPanel: false,
       groups: [],
-      selectedGroupId: '',
-      newGroup: {
-        name: '',
-        file: null
-      }
+      selectedGroupId: ''
     };
   },
   computed: {
@@ -192,12 +157,22 @@ export default {
   created() {
     this.handleThemeChange();
     this.fetchData();
+    if (this.$bus) {
+      this.$bus.$on('project-list-update', this.fetchData)
+    }
   },
   mounted() {
     window.addEventListener('themeChange', this.handleThemeChange);
+    if (this.$bus) {
+      this.$bus.$on('groups-updated', this.handleGroupsUpdated)
+    }
   },
   beforeDestroy() {
     window.removeEventListener('themeChange', this.handleThemeChange);
+    if (this.$bus) {
+      this.$bus.$off('project-list-update', this.fetchData)
+      this.$bus.$off('groups-updated', this.handleGroupsUpdated)
+    }
   },
   methods: {
     notifyNoPermission() {
@@ -205,8 +180,12 @@ export default {
       else alert('当前账号仅支持查看')
     },
     normalizeRankingList(list) {
-      const rankDefaults = [99.2, 98.5, 97.8, 96.5, 95.2]
       const incoming = Array.isArray(list) ? list : []
+      const groupNames = Array.isArray(this.groups)
+        ? this.groups
+            .map((g) => (g && g.name != null ? String(g.name).trim() : ''))
+            .filter(Boolean)
+        : []
 
       const sanitize = (it) => {
         const rawName = it && it.name != null ? String(it.name).trim() : ''
@@ -228,25 +207,16 @@ export default {
         if (result.length >= 5) break
       }
 
-      const groupNames = Array.isArray(this.groups) ? this.groups.map((g) => (g && g.name != null ? String(g.name).trim() : '')).filter(Boolean) : []
-      const fallbackNames = ['A1班组', 'A2班组', 'A3班组', 'A4班组', 'A5班组', '一班组', '二班组', '三班组', '四班组', '五班组']
-      const candidates = groupNames.length ? groupNames : fallbackNames
-
-      for (const n of candidates) {
+      for (const name of groupNames) {
         if (result.length >= 5) break
-        if (!n) continue
-        if (taken.has(n)) continue
-        taken.add(n)
-        result.push({ name: n, value: null })
+        if (taken.has(name)) continue
+        taken.add(name)
+        result.push({ name, value: 0 })
       }
 
-      while (result.length < 5) {
-        result.push({ name: `第${result.length + 1}名`, value: null })
-      }
-
-      return result.slice(0, 5).map((it, idx) => ({
+      return result.slice(0, 5).map((it) => ({
         name: it.name,
-        value: it.value != null ? it.value : rankDefaults[idx]
+        value: it.value != null ? it.value : 0
       }))
     },
     handleThemeChange() {
@@ -300,77 +270,21 @@ export default {
             this.rankEditForm.name = group.name;
         }
     },
-    openGroupManager() {
+    openGroupSettingsPanel() {
         if (!this.canEditGroups) {
           this.notifyNoPermission()
           return
         }
-        this.showGroupManager = true;
-        this.fetchGroups();
+        this.showGroupSettingsPanel = true
     },
-    closeGroupManager() {
-        this.showGroupManager = false;
-        // 刷新下拉列表
-        this.fetchGroups();
+    closeGroupSettingsPanel() {
+        this.showGroupSettingsPanel = false
+        this.fetchGroups()
+        this.fetchData()
     },
-    async addGroup() {
-        if (!this.canEditGroups) {
-          this.notifyNoPermission()
-          return
-        }
-        if (!this.newGroup.name) {
-            alert('请输入班组名称');
-            return;
-        }
-        
-        try {
-            const formData = new FormData();
-            formData.append('name', this.newGroup.name);
-            if (this.newGroup.file) {
-              formData.append('photo', this.newGroup.file);
-            } else {
-              formData.append('photoUrl', `/banzu/${encodeURIComponent(`${this.newGroup.name}.jpg`)}`);
-            }
-            const response = await fetch('/api/groups', {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: formData
-            });
-            const res = await response.json();
-            if (res.success) {
-                this.groups = res.data;
-                this.newGroup = { name: '', file: null };
-            } else {
-                alert('添加失败');
-            }
-        } catch (err) {
-            console.error('添加班组失败', err);
-        }
-    },
-    async deleteGroup(id) {
-        if (!this.canEditGroups) {
-          this.notifyNoPermission()
-          return
-        }
-        if (!confirm('确定删除该班组吗？')) return;
-        try {
-            const response = await fetch(`/api/groups/${id}`, {
-                method: 'DELETE',
-                headers: getAuthHeaders()
-            });
-            const res = await response.json();
-            if (res.success) {
-                this.groups = res.data;
-            }
-        } catch (err) {
-            console.error('删除班组失败', err);
-        }
-    },
-    handleNewGroupFile(event) {
-        const file = event.target.files[0];
-        if (file) {
-            this.newGroup.file = file;
-        }
+    handleGroupsUpdated() {
+        this.fetchGroups()
+        this.fetchData()
     },
     openEditModal(type, index = -1) {
       if (type === 'pioneer' && !this.canEditPioneer) {
@@ -408,25 +322,6 @@ export default {
     closeModal() {
       this.showModal = false;
     },
-    handleFileChange(e) {
-      const file = e.target.files[0];
-      if (file) {
-        this.editForm.photoFile = null;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          this.editForm.photoPreview = event.target.result;
-        };
-        reader.readAsDataURL(file);
-        file.arrayBuffer().then((buffer) => {
-          this.editForm.photoFile = new File([buffer], file.name, {
-            type: file.type || 'application/octet-stream',
-            lastModified: Date.now()
-          });
-        }).catch(() => {
-          this.editForm.photoFile = file;
-        });
-      }
-    },
     saveData() {
       if (this.editType === 'pioneer') {
         this.savePioneer();
@@ -442,9 +337,7 @@ export default {
       const formData = new FormData();
       formData.append('groupName', this.editForm.groupName);
       formData.append('passingRate', this.editForm.passingRate);
-      if (this.editForm.photoFile) {
-        formData.append('photo', this.editForm.photoFile);
-      } else if (this.editForm.photoUrl) {
+      if (this.editForm.photoUrl) {
         formData.append('photoUrl', this.editForm.photoUrl);
       }
 
@@ -937,145 +830,23 @@ export default {
     }
 }
 
-.group-manager-modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.8);
-      z-index: 300002;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+.group-settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.78);
+    z-index: 300002;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
 
-      .manager-content {
-        background: #001f3f;
-        padding: 20px;
-        border-radius: 8px;
-        border: 2px solid #00baff;
-        box-shadow: 0 0 20px rgba(0, 186, 255, 0.5);
-        width: 400px;
-        max-width: 90%;
-        color: #fff;
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-
-        .manager-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(0, 186, 255, 0.3);
-            padding-bottom: 10px;
-
-            h3 {
-                color: #00baff;
-                font-size: 18px;
-                margin: 0;
-            }
-
-            .close-icon {
-                cursor: pointer;
-                font-size: 24px;
-                &:hover { color: #00baff; }
-            }
-        }
-
-        .group-list {
-            max-height: 300px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            min-height: 100px;
-            background: rgba(0, 0, 0, 0.2);
-            padding: 10px;
-            border-radius: 4px;
-
-            .empty-tip {
-                text-align: center;
-                color: rgba(255, 255, 255, 0.5);
-                padding: 20px;
-            }
-
-            .group-item {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                background: rgba(255, 255, 255, 0.05);
-                padding: 8px;
-                border-radius: 4px;
-
-                .group-img {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 50%;
-                    object-fit: cover;
-                    border: 1px solid #00baff;
-                }
-
-                .group-name {
-                    flex: 1;
-                    color: #fff;
-                    font-size: 14px;
-                }
-
-                .delete-btn {
-                    color: #ff4d4f;
-                    cursor: pointer;
-                    font-size: 12px;
-                    &:hover { text-decoration: underline; }
-                }
-            }
-        }
-
-        .add-group-form {
-            display: flex;
-            gap: 10px;
-            border-top: 1px solid rgba(0, 186, 255, 0.3);
-            padding-top: 15px;
-
-            .name-input {
-                flex: 1;
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(0, 186, 255, 0.5);
-                color: #fff;
-                padding: 6px;
-                border-radius: 4px;
-                outline: none;
-                &:focus { border-color: #00baff; }
-            }
-
-            .file-select-box {
-                display: flex;
-                align-items: center;
-            }
-
-            .file-btn {
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.3);
-                color: #fff;
-                padding: 6px 10px;
-                border-radius: 4px;
-                cursor: pointer;
-                white-space: nowrap;
-                font-size: 12px;
-                &:hover { background: rgba(255, 255, 255, 0.2); }
-            }
-
-            .add-btn {
-                background: #00baff;
-                color: #fff;
-                border: none;
-                padding: 0 15px;
-                border-radius: 4px;
-                font-weight: bold;
-                cursor: pointer;
-                white-space: nowrap;
-                &:hover { background: #009acc; }
-            }
-        }
-      }
-    }
+.group-settings-modal {
+    width: min(1200px, 94vw);
+    height: min(780px, 88vh);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 0 28px rgba(0, 186, 255, 0.35);
+}
 </style>

@@ -26,8 +26,13 @@
       </div>
 
       <div class="contetn_right">
-        <ItemWrap class="contetn_right-top contetn_lr-item" title="生产绩效榜">
-          <MonthlyPerformance />
+        <ItemWrap
+          class="contetn_right-top contetn_lr-item"
+          title="生产绩效榜"
+          :title-clickable="true"
+          @title-click="openPerformanceGroupSettings"
+        >
+          <MonthlyPerformance ref="monthlyPerformance" />
         </ItemWrap>
       </div>
 
@@ -91,6 +96,12 @@ export default {
     }
   },
   methods: {
+    openPerformanceGroupSettings() {
+      const monthlyPerformance = this.$refs.monthlyPerformance
+      if (monthlyPerformance && monthlyPerformance.openGroupSettingsPanel) {
+        monthlyPerformance.openGroupSettingsPanel()
+      }
+    },
     // 处理项目模型双击选择构件，同步到构件模型
     onBusComponentRequest(payload) {
       if (!payload || !payload.element) return;

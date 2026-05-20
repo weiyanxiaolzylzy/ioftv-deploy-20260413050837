@@ -17,11 +17,13 @@
             ref="ifcViewer"
             :ifcUrl="currentIfcUrl"
             :projectId="currentProject && currentProject.id"
+            :disabledCheckboxIds="lockedIfcElementIds"
             :enablePick="true"
             :showElementList="false"
             :showHints="true"
             :backgroundColor="0x051020"
             :useIframeMode="true"
+            :useDatabaseIndex="true"
             :multiSelectMode="false"
             @element-click="onIfcElementClick"
             @element-dblclick="onIfcElementDblClick"
@@ -144,6 +146,12 @@ export default {
     }
   },
   computed: {
+    lockedIfcElementIds() {
+      return (this.currentProject && Array.isArray(this.currentProject.components) ? this.currentProject.components : [])
+        .filter((item) => ['待复检', '复检完成待出库', '已出库'].includes(String(item.status || '').trim()))
+        .map((item) => Number(item.ifcElementId))
+        .filter((id) => Number.isFinite(id))
+    },
     gateHint() {
       if (!this.routeProjectId) return '请从大屏「管理项目」→ 展开项目 →「项目构件管理」进入（勿从地址栏单独打开本页）'
       return '未找到该项目，请返回大屏核对后重试'
@@ -304,9 +312,13 @@ export default {
       this.$set(this.ddAdding, key, true)
       this.ddNewVal = ''
     },
-    confirmAdd(field) {
+    async confirmAdd(field) {
       const val = this.ddNewVal.trim()
       if (!val) return
+      if (field === 'teamName') {
+        await this.createGroupFromTeamName(val)
+        return
+      }
       if (field === 'status') {
         if (!this.personPresets[field].some(s => s.value === val)) {
           this.personPresets[field].push({ label: val, value: val })
@@ -325,13 +337,77 @@ export default {
     confirmAddStatus() {
       this.confirmAdd('status')
     },
-    delPreset(field, idx) {
+    async delPreset(field, idx) {
+      if (field === 'teamName') {
+        const item = this.personPresets[field] && this.personPresets[field][idx]
+        if (!item) return
+        await this.deleteGroupByName(item)
+        return
+      }
       if (field === 'status') {
         this.personPresets[field].splice(idx, 1)
       } else {
         this.personPresets[field].splice(idx, 1)
       }
       this.savePersonPreset(field)
+    },
+    async createGroupFromTeamName(name) {
+      const trimmed = String(name || '').trim()
+      if (!trimmed) return
+      const exists = (this.groups || []).some(g => String(g.name || '').trim() === trimmed)
+      if (exists) {
+        this.assignForm.teamName = trimmed
+        this.closeAllDD()
+        return
+      }
+      try {
+        const formData = new FormData()
+        formData.append('name', trimmed)
+        const response = await fetch('/api/groups', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: formData
+        })
+        const res = await response.json().catch(() => ({}))
+        if (!response.ok || !res || !res.success) {
+          throw new Error((res && res.message) || '添加班组失败')
+        }
+        const list = Array.isArray(res.data) ? res.data : []
+        this.groups = list
+        this.personPresets.teamName = list.map(g => g.name).filter(Boolean)
+        this.assignForm.teamName = trimmed
+        this.closeAllDD()
+      } catch (e) {
+        console.error('createGroupFromTeamName failed:', e)
+        this.$Message && this.$Message.error(e.message || '添加班组失败')
+      }
+    },
+    async deleteGroupByName(name) {
+      const trimmed = String(name || '').trim()
+      if (!trimmed) return
+      const target = (this.groups || []).find(g => String(g.name || '').trim() === trimmed)
+      if (!target || !target.id) {
+        this.personPresets.teamName = this.personPresets.teamName.filter(item => item !== trimmed)
+        this.savePersonPreset('teamName')
+        return
+      }
+      try {
+        const response = await fetch(`/api/groups/${encodeURIComponent(target.id)}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        })
+        const res = await response.json().catch(() => ({}))
+        if (!response.ok || !res || !res.success) {
+          throw new Error((res && res.message) || '删除班组失败')
+        }
+        const list = Array.isArray(res.data) ? res.data : []
+        this.groups = list
+        this.personPresets.teamName = list.map(g => g.name).filter(Boolean)
+        if (this.assignForm.teamName === trimmed) this.assignForm.teamName = ''
+      } catch (e) {
+        console.error('deleteGroupByName failed:', e)
+        this.$Message && this.$Message.error(e.message || '删除班组失败')
+      }
     },
     getTodayStr() {
       const d = new Date()
@@ -344,9 +420,11 @@ export default {
     },
     resolveIfcAbsUrl(u) {
       if (!u) return ''
-      if (/^https?:\/\//i.test(u)) return u
+      const raw = String(u).trim()
+      if (!raw) return ''
+      if (/^https?:\/\//i.test(raw)) return raw
       const origin = window.location.origin
-      const path = u.startsWith('/') ? u : `/${u}`
+      const path = raw.startsWith('/') ? raw : `/${raw}`
       return `${origin}${path}`
     },
     emitProjectUpdated(updated) {
@@ -378,7 +456,7 @@ export default {
       }
 
       this.currentProject = project
-      const rawUrl = (project && project.ifcUrl) ? project.ifcUrl : ''
+      const rawUrl = project && project.ifcUrl ? String(project.ifcUrl).trim() : ''
       this.currentIfcUrl = rawUrl ? this.resolveIfcAbsUrl(rawUrl) : ''
     },
     async refreshProjectFromServer() {
@@ -388,14 +466,19 @@ export default {
         const data = await res.json().catch(() => ({}))
         if (res.ok && data && data.success && data.data) {
           this.currentProject = data.data
-          const rawUrl = data.data.ifcUrl || ''
+          const rawUrl = data.data.ifcUrl ? String(data.data.ifcUrl).trim() : ''
           this.currentIfcUrl = rawUrl ? this.resolveIfcAbsUrl(rawUrl) : ''
           this.emitProjectUpdated(data.data)
         }
       } catch (e) { /* ignore */ }
     },
     onListCheckboxSelection({ rows }) {
-      this.listSelectedRows = Array.isArray(rows) ? rows.slice() : []
+      const selectedRows = Array.isArray(rows) ? rows.slice() : []
+      const lockedExpressIds = new Set((this.lockedIfcElementIds || []).map((id) => String(id)))
+      this.listSelectedRows = selectedRows.filter((row) => !lockedExpressIds.has(String(row.expressID || '')))
+      if (this.listSelectedRows.length !== selectedRows.length && this.$Message) {
+        this.$Message.warning('待复检、待出库或已出库构件不可再次作为普通检测构件勾选')
+      }
     },
     sanitizeComponentMarkForQuery(value) {
       if (value == null) return ''
@@ -414,6 +497,9 @@ export default {
         const data = await res.json().catch(() => ({}))
         if (res.ok && data && data.success && data.data) {
           return data.data
+        }
+        if (res.status === 404) {
+          return null
         }
       } catch (e) {
         console.warn('fetchComponentDetail failed:', e)
@@ -472,8 +558,8 @@ export default {
         const data = await res.json()
         if (data && data.success && data.data) {
           this.currentProject = data.data
-          const rawUrl = data.data.ifcUrl || ''
-          this.currentIfcUrl = rawUrl ? this.resolveIfcAbsUrl(rawUrl) : ''
+        const rawUrl = data.data.ifcUrl ? String(data.data.ifcUrl).trim() : ''
+        this.currentIfcUrl = rawUrl ? this.resolveIfcAbsUrl(rawUrl) : ''
           return data.data
         }
       } catch (e) {}

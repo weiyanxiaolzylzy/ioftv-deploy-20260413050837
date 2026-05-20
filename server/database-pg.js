@@ -83,6 +83,12 @@ function mapComponentRow(component) {
         qualityManager: component.quality_manager || '',
         planDate: component.plan_date || '',
         status: component.status || '待检测',
+        qcResult: component.qc_result || '',
+        firstPassQualified: !!component.first_pass_qualified,
+        qualifiedAt: component.qualified_at || '',
+        outboundAt: component.outbound_at || '',
+        reinspectionCount: component.reinspection_count != null ? Number(component.reinspection_count) : 0,
+        qcLocked: !!component.qc_locked,
         ifcElementId: component.ifc_element_id || '',
         ifcGlobalId: component.ifc_global_id || '',
         ifcType: component.ifc_type || ''
@@ -153,9 +159,47 @@ async function initDatabase() {
             quality_manager TEXT DEFAULT '',
             plan_date TEXT,
             status TEXT DEFAULT '待检测',
+            qc_result TEXT DEFAULT '',
+            first_pass_qualified BOOLEAN DEFAULT FALSE,
+            qualified_at TEXT DEFAULT '',
+            outbound_at TEXT DEFAULT '',
+            reinspection_count INTEGER DEFAULT 0,
+            qc_locked BOOLEAN DEFAULT FALSE,
             ifc_element_id TEXT DEFAULT '',
             ifc_global_id TEXT DEFAULT '',
             ifc_type TEXT DEFAULT '',
+            child_ifc_element_ids TEXT DEFAULT '[]',
+            parent_assembly_ifc_element_id TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS component_reinspection_tasks (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+            component_mark TEXT DEFAULT '',
+            team_name TEXT DEFAULT '',
+            inspection_date TEXT DEFAULT '',
+            reinspection_date TEXT DEFAULT '',
+            failed_items_json TEXT DEFAULT '[]',
+            defect_types_json TEXT DEFAULT '[]',
+            status TEXT DEFAULT '待复检',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS component_outbound_records (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+            component_mark TEXT DEFAULT '',
+            team_name TEXT DEFAULT '',
+            team_leader TEXT DEFAULT '',
+            quality_inspector TEXT DEFAULT '',
+            quality_manager TEXT DEFAULT '',
+            inspection_date TEXT DEFAULT '',
+            outbound_date TEXT DEFAULT '',
+            report_snapshot_json TEXT DEFAULT '{}',
+            status TEXT DEFAULT '已出库',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`,
@@ -208,6 +252,8 @@ async function initDatabase() {
          VALUES (1, '', '/people.jpg', 0, 0)
          ON CONFLICT (id) DO NOTHING`,
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS team_id TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS child_ifc_element_ids TEXT DEFAULT '[]'`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS parent_assembly_ifc_element_id TEXT DEFAULT ''`,
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS team_name TEXT DEFAULT ''`,
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS self_inspector TEXT DEFAULT ''`,
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS position_code TEXT DEFAULT ''`,
@@ -221,9 +267,18 @@ async function initDatabase() {
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS weight_gross DOUBLE PRECISION`,
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS material TEXT DEFAULT ''`,
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS main_reference TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS qc_result TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS first_pass_qualified BOOLEAN DEFAULT FALSE`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS qualified_at TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS outbound_at TEXT DEFAULT ''`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS reinspection_count INTEGER DEFAULT 0`,
+        `ALTER TABLE components ADD COLUMN IF NOT EXISTS qc_locked BOOLEAN DEFAULT FALSE`,
         `CREATE INDEX IF NOT EXISTS idx_project_statistics_updated ON project_statistics(updated_at)`,
         `CREATE INDEX IF NOT EXISTS idx_components_project ON components(project_id)`,
-        `CREATE INDEX IF NOT EXISTS idx_components_mark ON components(component_mark)`
+        `CREATE INDEX IF NOT EXISTS idx_components_mark ON components(component_mark)`,
+        `CREATE INDEX IF NOT EXISTS idx_components_status ON components(status)`,
+        `CREATE INDEX IF NOT EXISTS idx_component_reinspection_tasks_component ON component_reinspection_tasks(component_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_component_outbound_records_component ON component_outbound_records(component_id)`
     ];
     for (const sql of statements) {
         const res = await run(sql);
@@ -376,9 +431,9 @@ const data = {
             id, project_id, name, component_mark, spec, position_code, bottom_elevation, top_elevation,
             length_value, width_value, area_value, cast_unit_weight, weight_net, weight_gross,
             material, main_reference, team_id, team_name, team_leader, self_inspector, quality_inspector,
-            quality_manager, plan_date, status, ifc_element_id, ifc_global_id, ifc_type,
+            quality_manager, plan_date, status, ifc_element_id, ifc_global_id, ifc_type, child_ifc_element_ids, parent_assembly_ifc_element_id,
             created_at, updated_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
         [
             component.id,
             component.project_id,
@@ -406,7 +461,9 @@ const data = {
             component.status || '待检测',
             component.ifc_element_id || '',
             component.ifc_global_id || '',
-            component.ifc_type || ''
+            component.ifc_type || '',
+            component.child_ifc_element_ids || '[]',
+            component.parent_assembly_ifc_element_id || ''
         ]
     ),
     getComponentsByProject: (projectId) => query(
@@ -414,6 +471,7 @@ const data = {
         [projectId]
     ),
     getComponentById: (id) => get('SELECT * FROM components WHERE id = $1', [id]),
+    deleteComponentsByProject: (projectId) => run('DELETE FROM components WHERE project_id = $1', [projectId]),
     getComponentByProjectAndIfcElementId: (projectId, ifcElementId) => get(
         `SELECT * FROM components
          WHERE project_id = $1 AND ifc_element_id = $2
@@ -427,6 +485,8 @@ const data = {
             component_mark,
             name,
             ifc_type,
+            child_ifc_element_ids,
+            parent_assembly_ifc_element_id,
             material,
             spec,
             main_reference,
@@ -442,6 +502,7 @@ const data = {
          FROM components
          WHERE project_id = $1
            AND COALESCE(ifc_element_id, '') <> ''
+           AND ifc_type = 'IFCELEMENTASSEMBLY'
          ORDER BY created_at DESC`,
         [projectId]
     ),
@@ -451,6 +512,64 @@ const data = {
          ORDER BY created_at DESC
          LIMIT 1`,
         [projectId, componentMark]
+    ),
+    createReinspectionTask: (task) => run(
+        `INSERT INTO component_reinspection_tasks (
+            id, project_id, component_id, component_mark, team_name, inspection_date, reinspection_date,
+            failed_items_json, defect_types_json, status, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+        [
+            task.id,
+            task.project_id,
+            task.component_id,
+            task.component_mark || '',
+            task.team_name || '',
+            task.inspection_date || '',
+            task.reinspection_date || '',
+            task.failed_items_json || '[]',
+            task.defect_types_json || '[]',
+            task.status || '待复检'
+        ]
+    ),
+    createOutboundRecord: (record) => run(
+        `INSERT INTO component_outbound_records (
+            id, project_id, component_id, component_mark, team_name, team_leader, quality_inspector,
+            quality_manager, inspection_date, outbound_date, report_snapshot_json, status, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+        [
+            record.id,
+            record.project_id,
+            record.component_id,
+            record.component_mark || '',
+            record.team_name || '',
+            record.team_leader || '',
+            record.quality_inspector || '',
+            record.quality_manager || '',
+            record.inspection_date || '',
+            record.outbound_date || '',
+            record.report_snapshot_json || '{}',
+            record.status || '已出库'
+        ]
+    ),
+    getReinspectionTasks: ({ projectId = null } = {}) => {
+        const params = [];
+        let where = '';
+        if (projectId) {
+            params.push(projectId);
+            where = `WHERE project_id = $${params.length}`;
+        }
+        return query(
+            `SELECT * FROM component_reinspection_tasks
+             ${where}
+             ORDER BY created_at DESC`,
+            params
+        );
+    },
+    getReinspectionTasksByComponentId: (componentId) => query(
+        `SELECT * FROM component_reinspection_tasks
+         WHERE component_id = $1
+         ORDER BY created_at DESC`,
+        [componentId]
     ),
     updateComponent: (id, updates) => {
         const entries = Object.entries(updates || {}).filter(([key]) => key !== 'id');
@@ -505,6 +624,7 @@ const data = {
     getTodayPlanRows: ({ startDate = null, endDate = null, projectId = null, today = null } = {}) => {
         const conditions = [];
         const params = [];
+        conditions.push(`COALESCE(c.status, '待检测') <> '已出库'`);
         if (projectId) {
             params.push(projectId);
             conditions.push(`p.id = $${params.length}`);
@@ -538,6 +658,10 @@ const data = {
                 c.quality_manager,
                 c.plan_date,
                 c.status,
+                c.qc_result,
+                c.qualified_at,
+                c.outbound_at,
+                c.qc_locked,
                 c.ifc_element_id,
                 c.ifc_global_id,
                 c.ifc_type

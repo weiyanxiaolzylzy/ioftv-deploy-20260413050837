@@ -375,6 +375,9 @@ const data = {
     getComponentById: (id) => {
         return get("SELECT * FROM components WHERE id = @id", { id });
     },
+    deleteComponentsByProject: (projectId) => {
+        return run("DELETE FROM components WHERE project_id = @projectId", { projectId });
+    },
     getComponentByProjectAndIfcElementId: (projectId, ifcElementId) => {
         return get(
             "SELECT * FROM components WHERE project_id = @projectId AND ifc_element_id = @ifcElementId ORDER BY created_at DESC LIMIT 1",
@@ -388,6 +391,8 @@ const data = {
                 component_mark,
                 name,
                 ifc_type,
+                child_ifc_element_ids,
+                parent_assembly_ifc_element_id,
                 material,
                 spec,
                 main_reference,
@@ -403,6 +408,7 @@ const data = {
              FROM components
              WHERE project_id = @projectId
                AND COALESCE(ifc_element_id, '') <> ''
+               AND ifc_type = 'IFCELEMENTASSEMBLY'
              ORDER BY created_at DESC`,
             { projectId }
         );
@@ -419,12 +425,12 @@ const data = {
             `INSERT INTO components (id, project_id, name, component_mark, spec, position_code, bottom_elevation, top_elevation,
               length_value, width_value, area_value, cast_unit_weight, weight_net, weight_gross, material, main_reference,
               team_id, team_name, team_leader, self_inspector, quality_inspector,
-              quality_manager, plan_date, status, ifc_element_id, ifc_global_id, ifc_type,
+              quality_manager, plan_date, status, ifc_element_id, ifc_global_id, ifc_type, child_ifc_element_ids, parent_assembly_ifc_element_id,
               created_at, updated_at)
              VALUES (@id, @project_id, @name, @component_mark, @spec, @position_code, @bottom_elevation, @top_elevation,
               @length_value, @width_value, @area_value, @cast_unit_weight, @weight_net, @weight_gross, @material, @main_reference,
               @team_id, @team_name, @team_leader, @self_inspector, @quality_inspector,
-              @quality_manager, @plan_date, @status, @ifc_element_id, @ifc_global_id, @ifc_type,
+              @quality_manager, @plan_date, @status, @ifc_element_id, @ifc_global_id, @ifc_type, @child_ifc_element_ids, @parent_assembly_ifc_element_id,
               @created_at, @updated_at)`,
             {
                 id: component.id || `GJ-${Date.now()}`,
@@ -454,6 +460,8 @@ const data = {
                 ifc_element_id: component.ifc_element_id || '',
                 ifc_global_id: component.ifc_global_id || '',
                 ifc_type: component.ifc_type || '',
+                child_ifc_element_ids: component.child_ifc_element_ids || '[]',
+                parent_assembly_ifc_element_id: component.parent_assembly_ifc_element_id || '',
                 created_at: now,
                 updated_at: now
             }
@@ -839,6 +847,8 @@ function initDatabase() {
             ifc_element_id TEXT DEFAULT '',
             ifc_global_id TEXT DEFAULT '',
             ifc_type TEXT DEFAULT '',
+            child_ifc_element_ids TEXT DEFAULT '[]',
+            parent_assembly_ifc_element_id TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now', '+8 hours')),
             updated_at TEXT DEFAULT (datetime('now', '+8 hours')),
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -995,6 +1005,13 @@ function initDatabase() {
         }
     }
     try {
+        db.exec("ALTER TABLE components ADD COLUMN child_ifc_element_ids TEXT DEFAULT '[]'");
+    } catch (err) {
+        if (!String(err.message || '').includes('duplicate column name')) {
+            console.error('[DB Init Error]', err.message, 'SQL: ALTER TABLE components ADD COLUMN child_ifc_element_ids');
+        }
+    }
+    try {
         db.exec("ALTER TABLE components ADD COLUMN team_name TEXT DEFAULT ''");
     } catch (err) {
         if (!String(err.message || '').includes('duplicate column name')) {
@@ -1079,13 +1096,13 @@ function migrateFromJson(jsonData) {
                     db.prepare(`
                         INSERT OR IGNORE INTO components
                         (id, project_id, name, component_mark, spec, team_leader, quality_inspector, quality_manager,
-                         plan_date, status, ifc_element_id, ifc_global_id, ifc_type, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         plan_date, status, ifc_element_id, ifc_global_id, ifc_type, child_ifc_element_ids, parent_assembly_ifc_element_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `).run(
                         c.id, p.id, c.name || '', c.componentMark || '', c.spec || '', c.teamLeader || '',
                         c.qualityInspector || '', c.qualityManager || '',
                         c.planDate || null, c.status || '待检测',
-                        c.ifcElementId || '', c.ifcGlobalId || '', c.ifcType || '',
+                        c.ifcElementId || '', c.ifcGlobalId || '', c.ifcType || '', c.childIfcElementIds || '[]', c.parentAssemblyIfcElementId || '',
                         now, now
                     );
                 }

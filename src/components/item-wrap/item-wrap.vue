@@ -7,7 +7,12 @@
 -->
 <template>
   <div class="glass-card">
-    <div class="card-header" v-if="title !== ''">
+    <div
+      class="card-header"
+      v-if="title !== ''"
+      :class="{ clickable: titleClickable }"
+      @click="handleTitleClick"
+    >
       <div class="header-line"></div>
       <h3 class="card-title">{{ title }}</h3>
       <div class="header-line"></div>
@@ -28,11 +33,20 @@ export default {
       type: String,
       default: () => "",
     },
+    titleClickable: {
+      type: Boolean,
+      default: false,
+    },
   },
   created() {},
 
   mounted() {},
-  methods: {},
+  methods: {
+    handleTitleClick() {
+      if (!this.titleClickable) return
+      this.$emit("title-click")
+    },
+  },
 };
 </script>
 <style lang='scss' scoped>
@@ -83,6 +97,10 @@ export default {
     justify-content: center;
     padding: 15px 20px 11px;
     gap: 16px;
+
+    &.clickable {
+      cursor: pointer;
+    }
 
     .header-line {
       flex: 1;

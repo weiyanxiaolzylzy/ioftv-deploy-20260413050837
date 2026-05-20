@@ -1,0 +1,23 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ioftv-app
+    restart: unless-stopped
+    environment:
+      PORT: 8890
+      DB_CLIENT: postgres
+      PGHOST: host.docker.internal
+      PGPORT: 5432
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: 123456
+    ports:
+      - "8890:8890"
+    volumes:
+      - ./server/uploads:/app/server/uploads
+      - ./banzu:/app/banzu
+      - ./单个构件质检表:/app/单个构件质检表
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
