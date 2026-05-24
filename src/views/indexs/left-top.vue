@@ -18,39 +18,75 @@
         </div>
         <ul class="user_Overview user_Overview--grid" :class="{ 'is-single': scope === 'single' }">
             <li v-if="scope === 'all'" class="user_Overview-item" style="color: #00fdfa">
-                <div v-if="scope === 'all'" class="user_Overview_nums allnum bgdonghua">
-                    <dv-digital-flop :config="projectConfig" style="width:100%;height:100%;" />
-                </div>
-                <div v-if="scope === 'all'" class="metric_label">
-                    <span class="metric_label__line">项目</span>
-                    <span class="metric_label__line">数量</span>
+                <div v-if="scope === 'all'" class="metric_orbit metric_orbit--cyan">
+                    <div class="metric_orbit__badge">
+                        <div class="metric_orbit__value-wrap">
+                            <div
+                                :ref="'metricValue-project'"
+                                :class="['metric_orbit__value', metricValueClass(metricValues.project)]"
+                                :style="metricValueStyle('project')"
+                            ><span class="metric_orbit__value-main">{{ metricDisplayParts(metricValues.project).main }}</span><span v-if="metricDisplayParts(metricValues.project).suffix" class="metric_orbit__value-suffix">{{ metricDisplayParts(metricValues.project).suffix }}</span></div>
+                        </div>
+                        <div class="metric_orbit__badge-core"></div>
+                    </div>
+                    <div class="metric_orbit__label">
+                        <span class="metric_orbit__line">已检测项目</span>
+                        <span class="metric_orbit__line">数量</span>
+                    </div>
                 </div>
             </li>
             <li class="user_Overview-item" style="color: #07f7a8">
-                <div class="user_Overview_nums online bgdonghua">
-                    <dv-digital-flop :config="detectedConfig" style="width:100%;height:100%;" />
-                </div>
-                <div class="metric_label">
-                    <span class="metric_label__line">已检测</span>
-                    <span class="metric_label__line">构件数量</span>
+                <div class="metric_orbit metric_orbit--green">
+                    <div class="metric_orbit__badge">
+                        <div class="metric_orbit__value-wrap">
+                            <div
+                                :ref="'metricValue-detected'"
+                                :class="['metric_orbit__value', metricValueClass(metricValues.detected)]"
+                                :style="metricValueStyle('detected')"
+                            ><span class="metric_orbit__value-main">{{ metricDisplayParts(metricValues.detected).main }}</span><span v-if="metricDisplayParts(metricValues.detected).suffix" class="metric_orbit__value-suffix">{{ metricDisplayParts(metricValues.detected).suffix }}</span></div>
+                        </div>
+                        <div class="metric_orbit__badge-core"></div>
+                    </div>
+                    <div class="metric_orbit__label">
+                        <span class="metric_orbit__line">已检测</span>
+                        <span class="metric_orbit__line">构件数量</span>
+                    </div>
                 </div>
             </li>
             <li class="user_Overview-item" style="color: #e3b337">
-                <div class="user_Overview_nums offline bgdonghua">
-                    <dv-digital-flop :config="firstPassCountConfig" style="width:100%;height:100%;" />
-                </div>
-                <div class="metric_label">
-                    <span class="metric_label__line">一次装配</span>
-                    <span class="metric_label__line">合格数量</span>
+                <div class="metric_orbit metric_orbit--amber">
+                    <div class="metric_orbit__badge">
+                        <div class="metric_orbit__value-wrap">
+                            <div
+                                :ref="'metricValue-firstPass'"
+                                :class="['metric_orbit__value', metricValueClass(metricValues.firstPass)]"
+                                :style="metricValueStyle('firstPass')"
+                            ><span class="metric_orbit__value-main">{{ metricDisplayParts(metricValues.firstPass).main }}</span><span v-if="metricDisplayParts(metricValues.firstPass).suffix" class="metric_orbit__value-suffix">{{ metricDisplayParts(metricValues.firstPass).suffix }}</span></div>
+                        </div>
+                        <div class="metric_orbit__badge-core"></div>
+                    </div>
+                    <div class="metric_orbit__label">
+                        <span class="metric_orbit__line">一次装配</span>
+                        <span class="metric_orbit__line">合格数量</span>
+                    </div>
                 </div>
             </li>
             <li class="user_Overview-item" style="color: #f56c6c">
-                <div class="user_Overview_nums passRate bgdonghua">
-                    <dv-digital-flop :config="passRateConfig" style="width:100%;height:100%;" />
-                </div>
-                <div class="metric_label">
-                    <span class="metric_label__line">一次装配</span>
-                    <span class="metric_label__line">合格率</span>
+                <div class="metric_orbit metric_orbit--lime">
+                    <div class="metric_orbit__badge">
+                        <div class="metric_orbit__value-wrap">
+                            <div
+                                :ref="'metricValue-passRate'"
+                                :class="['metric_orbit__value', metricValueClass(metricValues.passRate)]"
+                                :style="metricValueStyle('passRate')"
+                            ><span class="metric_orbit__value-main">{{ metricDisplayParts(metricValues.passRate).main }}</span><span v-if="metricDisplayParts(metricValues.passRate).suffix" class="metric_orbit__value-suffix">{{ metricDisplayParts(metricValues.passRate).suffix }}</span></div>
+                        </div>
+                        <div class="metric_orbit__badge-core"></div>
+                    </div>
+                    <div class="metric_orbit__label">
+                        <span class="metric_orbit__line">一次装配</span>
+                        <span class="metric_orbit__line">合格率</span>
+                    </div>
                 </div>
             </li>
         </ul>
@@ -59,11 +95,6 @@
 
 <script>
 import { getAuthHeaders } from '@/utils'
-let style = {
-    fontSize: 32,
-    fontWeight: 900,
-    fill: '#fff'
-}
 export default {
     data() {
         return {
@@ -72,40 +103,19 @@ export default {
             projects: [],
             statisticsByProject: {},
             layoutMode: 'regular',
-            metricFontSize: 32,
             resizeObserver: null,
             usingWindowResizeFallback: false,
-            projectConfig: {
-                number: [0],
-                content: '{nt}',
-                style: {
-                    ...style,
-                    fill: "#00baff",
-                },
+            metricValues: {
+                project: '0',
+                detected: '0',
+                firstPass: '0',
+                passRate: '0%'
             },
-            detectedConfig: {
-                number: [0],
-                content: '{nt}',
-                style: {
-                    ...style,
-                    fill: "#07f7a8",
-                },
-            },
-            firstPassCountConfig: {
-                number: [0],
-                content: '{nt}',
-                style: {
-                    ...style,
-                    fill: "#e3b337",
-                },
-            },
-            passRateConfig: {
-                number: [0],
-                content: '{nt}%',
-                style: {
-                    ...style,
-                    fill: "#00baff",
-                },
+            metricScaleMap: {
+                project: 1,
+                detected: 1,
+                firstPass: 1,
+                passRate: 1
             }
         };
     },
@@ -126,6 +136,7 @@ export default {
   mounted() {
     this.$nextTick(() => {
       this.setupResponsiveLayout();
+      this.scheduleMetricScaleUpdate();
     });
   },
   beforeDestroy() {
@@ -223,42 +234,67 @@ export default {
         nextMode = 'compact';
       }
 
-      const nextFontSize = nextMode === 'tight' ? 18 : nextMode === 'compact' ? 22 : 28;
       const modeChanged = this.layoutMode !== nextMode;
-      const fontChanged = this.metricFontSize !== nextFontSize;
 
-      if (!modeChanged && !fontChanged) return;
+      if (!modeChanged) return;
 
       this.layoutMode = nextMode;
-      this.metricFontSize = nextFontSize;
       this.refreshConfigs();
+      this.scheduleMetricScaleUpdate();
     },
-    buildFlopConfig(number, fill, suffix = '') {
-      return {
-        number: [number],
-        content: `{nt}${suffix}`,
-        style: {
-          ...style,
-          fontSize: this.metricFontSize,
-          fill,
-        },
+    setMetricValue(type, number, suffix = '') {
+      this.metricValues = {
+        ...this.metricValues,
+        [type]: `${number}${suffix}`
       };
     },
-    setMetricConfig(type, number) {
-      switch (type) {
-        case 'project':
-          this.projectConfig = this.buildFlopConfig(number, '#00baff');
-          break;
-        case 'detected':
-          this.detectedConfig = this.buildFlopConfig(number, '#07f7a8');
-          break;
-        case 'firstPass':
-          this.firstPassCountConfig = this.buildFlopConfig(number, '#e3b337');
-          break;
-        case 'passRate':
-          this.passRateConfig = this.buildFlopConfig(number, '#00baff', '%');
-          break;
+    metricValueStyle(type) {
+      const scale = this.metricScaleMap[type] || 1;
+      return {
+        transform: `scale(${scale})`,
+        transformOrigin: 'center center'
+      };
+    },
+    metricDisplayParts(value) {
+      const text = String(value == null ? '' : value).trim();
+      if (!text) return { main: '', suffix: '' };
+      if (text.endsWith('%')) {
+        return {
+          main: text.slice(0, -1),
+          suffix: '%'
+        };
       }
+      return { main: text, suffix: '' };
+    },
+    metricValueClass(value) {
+      const text = String(value == null ? '' : value).trim();
+      if (!text) return 'is-short';
+      if (text.length >= 7) return 'is-xlong';
+      if (text.length >= 5) return 'is-long';
+      if (text.length >= 3) return 'is-medium';
+      return 'is-short';
+    },
+    scheduleMetricScaleUpdate() {
+      this.$nextTick(() => {
+        this.updateMetricScales();
+      });
+    },
+    updateMetricScales() {
+      const nextScaleMap = { ...this.metricScaleMap };
+      ['project', 'detected', 'firstPass', 'passRate'].forEach((type) => {
+        const node = this.$refs[`metricValue-${type}`];
+        const el = Array.isArray(node) ? node[0] : node;
+        if (!el || !el.parentElement) return;
+        const safeWidth = Math.max((el.parentElement.clientWidth || 0) - 12, 20);
+        const textWidth = el.scrollWidth || el.getBoundingClientRect().width || 0;
+        if (!safeWidth || !textWidth) {
+          nextScaleMap[type] = 1;
+          return;
+        }
+        const rawScale = safeWidth / textWidth;
+        nextScaleMap[type] = Math.max(Math.min(rawScale, 1), 0.68);
+      });
+      this.metricScaleMap = nextScaleMap;
     },
     onProjectListUpdate(projects) {
       if (Array.isArray(projects)) {
@@ -308,10 +344,11 @@ export default {
     },
     async refreshConfigs() {
       const stats = this.getStats();
-      this.setMetricConfig('project', stats.projectCount);
-      this.setMetricConfig('detected', stats.inspectedCount);
-      this.setMetricConfig('firstPass', stats.qualifiedCount);
-      this.setMetricConfig('passRate', stats.rate);
+      this.setMetricValue('project', stats.projectCount);
+      this.setMetricValue('detected', stats.inspectedCount);
+      this.setMetricValue('firstPass', stats.qualifiedCount);
+      this.setMetricValue('passRate', stats.rate, '%');
+      this.scheduleMetricScaleUpdate();
     }
         }
 };
@@ -324,9 +361,9 @@ export default {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    padding: 6px 4px 4px;
+    padding: 4px 3px 2px;
     box-sizing: border-box;
-    gap: 6px;
+    gap: 4px;
     overflow: hidden;
 }
 
@@ -335,7 +372,7 @@ export default {
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
     padding: 0 2px;
     flex-shrink: 0;
 }
@@ -392,7 +429,7 @@ export default {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         grid-template-rows: minmax(0, 1fr);
-        gap: 6px;
+        gap: 4px;
         align-items: stretch;
         min-height: 0;
 
@@ -404,11 +441,9 @@ export default {
     li {
         flex: 1;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 2px 4px;
-        gap: 8px;
+        padding: 2px;
         cursor: pointer;
         transition: transform 0.2s;
         min-width: 0;
@@ -419,23 +454,106 @@ export default {
             transform: scale(1.03);
         }
 
-        .metric_label {
+        .metric_orbit {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 98px;
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
-            gap: 2px;
-            flex: 0 1 auto;
-            min-width: 0;
-            max-width: none;
-            margin: 0;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 2px 6px;
+            box-sizing: border-box;
         }
 
-        .metric_label__line {
+        .metric_orbit__badge {
+            position: relative;
+            width: min(100%, 72px);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            border: 2px solid currentColor;
+            background: transparent;
+            box-shadow:
+                0 0 10px rgba(0, 0, 0, 0.18),
+                inset 0 0 18px rgba(0, 0, 0, 0.26);
+        }
+
+        .metric_orbit__badge::before {
+            content: '';
+            position: absolute;
+            inset: 7px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.20);
+        }
+
+        .metric_orbit__badge-core {
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            border: 1px dashed rgba(255, 255, 255, 0.18);
+            opacity: 0.65;
+        }
+
+        .metric_orbit__value-wrap {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        .metric_orbit__value {
+            display: inline-flex;
+            align-items: flex-start;
+            justify-content: center;
+            width: auto;
+            max-width: 100%;
+            line-height: 1;
+            white-space: nowrap;
+            overflow: visible;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.04em;
+            color: currentColor;
+            text-shadow:
+                0 0 8px rgba(0, 0, 0, 0.55),
+                0 0 12px rgba(15, 255, 195, 0.2);
+        }
+
+        .metric_orbit__value-main,
+        .metric_orbit__value-suffix {
+            display: inline-block;
+            vertical-align: baseline;
+        }
+
+        .metric_orbit__value-suffix {
+            font-size: 0.72em;
+            line-height: 1;
+            margin-left: 1px;
+            transform: translateY(0.02em);
+            opacity: 0.92;
+        }
+
+        .metric_orbit__label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            min-height: 32px;
+        }
+
+        .metric_orbit__line {
             display: block;
             text-align: center;
-            line-height: 1.15;
+            line-height: 1.1;
             font-size: clamp(11px, 0.8vw, 16px);
+            font-size: clamp(10px, 0.72vw, 15px);
             font-weight: 900;
             color: rgba(255, 255, 255, 0.98);
             letter-spacing: 0.8px;
@@ -447,120 +565,39 @@ export default {
                 0 0 20px rgba(0, 0, 0, 0.5);
         }
 
-        .user_Overview_nums {
-            width: clamp(56px, 3.4vw, 76px);
-            height: clamp(56px, 3.4vw, 76px);
-            flex-shrink: 0;
-            text-align: center;
-            line-height: 1;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            &::before {
-                content: '';
-                position: absolute;
-                width: 100%;
-                height: 100%;
-                top: 0;
-                left: 0;
-                background-size: 100% 100%;
-            }
-
-            &.bgdonghua::before {
-                animation: rotating 14s linear infinite;
-            }
+        .metric_orbit--cyan {
+            color: #16e3ff;
         }
-        
-        .project_name_card {
-            width: min(100%, 150px);
-            height: clamp(56px, 3.4vw, 76px);
-            max-width: 100%;
-            border-radius: 14px;
-            padding: 6px 8px;
-            box-sizing: border-box;
-            position: relative;
-            overflow: hidden;
-            background:
-                radial-gradient(110px 70px at 12% 20%, rgba(0, 234, 255, 0.22), rgba(0, 234, 255, 0) 60%),
-                radial-gradient(140px 90px at 82% 88%, rgba(0, 114, 255, 0.20), rgba(0, 114, 255, 0) 62%),
-                linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-            border: 1px solid rgba(0, 234, 255, 0.20);
-            box-shadow:
-                0 10px 22px rgba(0, 0, 0, 0.22),
-                inset 0 1px 0 rgba(255, 255, 255, 0.10);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 6px;
-            cursor: default;
 
-            &::before {
-                content: '';
-                position: absolute;
-                left: 0;
-                top: 0;
-                bottom: 0;
-                width: 3px;
-                background: linear-gradient(180deg, rgba(0, 234, 255, 0.8), rgba(0, 114, 255, 0.35));
-                box-shadow: 0 0 12px rgba(0, 234, 255, 0.35);
-            }
+        .metric_orbit--green {
+            color: #20ffb9;
+        }
 
-            &__chip {
-                width: fit-content;
-                padding: 3px 8px;
-                border-radius: 999px;
-                font-size: 10px;
-                font-weight: 800;
-                letter-spacing: 0.5px;
-                color: rgba(255, 255, 255, 0.92);
-                background: rgba(0, 234, 255, 0.10);
-                border: 1px solid rgba(0, 234, 255, 0.22);
-                backdrop-filter: blur(6px);
-                margin-left: 3px;
-            }
+        .metric_orbit--amber {
+            color: #ffb624;
+        }
 
-            &__name {
-                font-size: clamp(12px, 0.9vw, 16px);
-                font-weight: 900;
-                letter-spacing: 0.5px;
-                line-height: 1.15;
-                color: rgba(255, 255, 255, 0.96);
-                text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 0, 0, 0.3);
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-                margin-left: 3px;
-            }
+        .metric_orbit--lime {
+            color: #4eff63;
+        }
+
+        .metric_orbit__value.is-short {
+            font-size: clamp(22px, 2.1vw, 32px);
+        }
+
+        .metric_orbit__value.is-medium {
+            font-size: clamp(18px, 1.8vw, 28px);
+        }
+
+        .metric_orbit__value.is-long {
+            font-size: clamp(15px, 1.45vw, 22px);
+        }
+
+        .metric_orbit__value.is-xlong {
+            font-size: clamp(12px, 1.1vw, 16px);
         }
 
 
-        .allnum {
-            &::before {
-                background-image: url("../../assets/img/left_top_lan.png");
-            }
-        }
-
-        .online {
-            &::before {
-                background-image: url("../../assets/img/left_top_lv.png");
-            }
-        }
-
-        .offline {
-            &::before {
-                background-image: url("../../assets/img/left_top_huang.png");
-            }
-        }
-        
-        .passRate {
-            &::before {
-                background-image: url("../../assets/img/left_top_lan.png");
-                filter: hue-rotate(300deg);
-            }
-        }
     }
 }
 
@@ -584,41 +621,47 @@ export default {
     }
 
     .user_Overview li {
-        gap: 5px;
         padding: 1px 2px;
     }
 
-    .user_Overview .metric_label {
-        gap: 1px;
+    .user_Overview .metric_orbit {
+        min-height: 98px;
+        gap: 5px;
+        padding: 6px 2px 8px;
     }
 
-    .user_Overview .metric_label__line {
+    .user_Overview .metric_orbit__value.is-short {
+        font-size: 26px;
+    }
+
+    .user_Overview .metric_orbit__value.is-medium {
+        font-size: 22px;
+    }
+
+    .user_Overview .metric_orbit__value.is-long {
+        font-size: 18px;
+    }
+
+    .user_Overview .metric_orbit__value.is-xlong {
+        font-size: 14px;
+    }
+
+    .user_Overview .metric_orbit__badge {
+        width: min(100%, 64px);
+    }
+
+    .user_Overview .metric_orbit__badge::before {
+        inset: 6px;
+    }
+
+    .user_Overview .metric_orbit__label {
+        min-height: 32px;
+    }
+
+    .user_Overview .metric_orbit__line {
         font-size: 11px;
         line-height: 1.08;
         letter-spacing: 0.5px;
-    }
-
-    .user_Overview .user_Overview_nums {
-        width: 52px;
-        height: 52px;
-    }
-
-    .user_Overview .project_name_card {
-        width: min(100%, 120px);
-        height: 52px;
-        padding: 5px 7px;
-        gap: 4px;
-        border-radius: 12px;
-    }
-
-    .user_Overview .project_name_card__chip {
-        padding: 2px 6px;
-        font-size: 9px;
-    }
-
-    .user_Overview .project_name_card__name {
-        font-size: 11px;
-        line-height: 1.08;
     }
 }
 
@@ -653,9 +696,6 @@ export default {
     }
 
     .user_Overview li {
-        justify-content: center;
-        align-items: center;
-        gap: 4px;
         padding: 0 1px;
 
         &:hover {
@@ -663,56 +703,49 @@ export default {
         }
     }
 
-    .user_Overview .metric_label {
-        align-items: center;
-        text-align: center;
+    .user_Overview .metric_orbit {
+        min-height: 84px;
+        gap: 4px;
+        padding: 4px 1px 6px;
+    }
+
+    .user_Overview .metric_orbit__value-wrap {
+        min-height: 28px;
+    }
+
+    .user_Overview .metric_orbit__value.is-short {
+        font-size: 20px;
+    }
+
+    .user_Overview .metric_orbit__value.is-medium {
+        font-size: 17px;
+    }
+
+    .user_Overview .metric_orbit__value.is-long {
+        font-size: 14px;
+    }
+
+    .user_Overview .metric_orbit__value.is-xlong {
+        font-size: 11px;
+    }
+
+    .user_Overview .metric_orbit__badge {
+        width: min(100%, 52px);
+    }
+
+    .user_Overview .metric_orbit__badge::before {
+        inset: 4px;
+    }
+
+    .user_Overview .metric_orbit__label {
+        min-height: 26px;
         gap: 1px;
     }
 
-    .user_Overview .metric_label__line {
-        text-align: center;
+    .user_Overview .metric_orbit__line {
         font-size: 11px;
         line-height: 1.05;
         letter-spacing: 0.3px;
-    }
-
-    .user_Overview .user_Overview_nums {
-        width: 46px;
-        height: 46px;
-    }
-
-    .user_Overview .project_name_card {
-        width: min(100%, 104px);
-        height: 46px;
-        padding: 4px 6px;
-        gap: 3px;
-        border-radius: 10px;
-    }
-
-    .user_Overview .project_name_card::before {
-        width: 2px;
-    }
-
-    .user_Overview .project_name_card__chip {
-        padding: 2px 5px;
-        font-size: 8px;
-        margin-left: 2px;
-    }
-
-    .user_Overview .project_name_card__name {
-        margin-left: 2px;
-        font-size: 10px;
-        line-height: 1.05;
-        -webkit-line-clamp: 2;
-    }
-}
-
-@keyframes rotating {
-    0% {
-        transform: rotate(0);
-    }
-    100% {
-        transform: rotate(360deg);
     }
 }
 

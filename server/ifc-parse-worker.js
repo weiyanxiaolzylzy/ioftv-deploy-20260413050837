@@ -1,10 +1,25 @@
 const { parseIfcProducts } = require('./ifc-parser');
 const { computeFileHash, readCachedParseResult, writeCachedParseResult } = require('./ifc-parse-cache');
 
+function sendAndExit(message, code = 0) {
+    if (!process.send) {
+        process.exit(code);
+        return;
+    }
+
+    process.send(message, (error) => {
+        if (error) {
+            console.error('[IFC Parse Worker] IPC send failed:', error);
+            process.exit(1);
+            return;
+        }
+        process.exit(code);
+    });
+}
+
 process.on('message', async (payload) => {
     if (!payload || !payload.filePath) {
-        process.send && process.send({ success: false, message: 'missing filePath' });
-        process.exit(1);
+        sendAndExit({ success: false, message: 'missing filePath' }, 1);
         return;
     }
 
@@ -13,33 +28,30 @@ process.on('message', async (payload) => {
         const fileHash = await computeFileHash(payload.filePath);
         const cached = await readCachedParseResult(fileHash, limit);
         if (cached) {
-            process.send && process.send({
+            sendAndExit({
                 success: true,
                 result: {
                     ...cached,
                     fromCache: true
                 }
-            });
-            process.exit(0);
+            }, 0);
             return;
         }
 
         const result = await parseIfcProducts(payload.filePath, limit);
         await writeCachedParseResult(fileHash, limit, result);
-        process.send && process.send({
+        sendAndExit({
             success: true,
             result: {
                 ...result,
                 fileHash,
                 fromCache: false
             }
-        });
-        process.exit(0);
+        }, 0);
     } catch (error) {
-        process.send && process.send({
+        sendAndExit({
             success: false,
             message: error && error.message ? String(error.message) : 'IFC 解析失败'
-        });
-        process.exit(1);
+        }, 1);
     }
 });

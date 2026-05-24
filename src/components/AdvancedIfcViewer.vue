@@ -359,6 +359,15 @@ export default {
       }
     },
     highlightedIds() {
+      console.log('[AdvancedIfcViewer] highlightedIds changed', {
+        iframeMode: this.useIframeMode,
+        highlightedIds: Array.isArray(this.highlightedIds) ? this.highlightedIds : [],
+        iframeReady: this.iframeReady,
+        iframeSrc: this.iframeSrc
+      });
+      if (this.useIframeMode) {
+        this.postToIframe({ type: 'highlight', ids: Array.isArray(this.highlightedIds) ? this.highlightedIds : [] });
+      }
       this.applyColorHighlighting();
     },
     multiSelectMode(val) {
@@ -412,6 +421,10 @@ export default {
       this.iframeLoadErrorMsg = '';
       // 通知 iframe 当前要高亮的构件（如果有）
       if (this.highlightedIds && this.highlightedIds.length > 0) {
+        console.log('[AdvancedIfcViewer] iframe load sync highlight', {
+          highlightedIds: this.highlightedIds,
+          iframeSrc: this.iframeSrc
+        });
         this.postToIframe({ type: 'highlight', ids: this.highlightedIds });
       }
       // 同步多选模式状态
@@ -495,6 +508,7 @@ export default {
     postToIframe(msg) {
       const iframe = this.$refs.viewerIframe;
       if (!iframe || !iframe.contentWindow) return;
+      console.log('[AdvancedIfcViewer] postToIframe', msg);
       iframe.contentWindow.postMessage(msg, window.location.origin);
     },
 
@@ -1225,9 +1239,17 @@ export default {
         const id = Number(expressID);
         if (!Number.isFinite(id)) return;
         this.selectedExpressID = id;
+        console.log('[AdvancedIfcViewer] post select-element to iframe', {
+          expressID: id,
+          componentMark: String(options.componentMark || '').trim(),
+          focus: options.focus !== false,
+          isolateOnly: options.isolateOnly === true,
+          iframeSrc: this.iframeSrc
+        });
         this.postToIframe({
           type: 'select-element',
           expressID: id,
+          componentMark: String(options.componentMark || '').trim(),
           focus: options.focus !== false,
           isolateOnly: options.isolateOnly === true
         });

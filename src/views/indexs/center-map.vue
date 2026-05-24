@@ -13,57 +13,60 @@
       <div class="you"></div>
     </div>
     <div class="mapwrap">
-      <!-- 左上角项目信息 -->
-      <div class="project-info-overlay" v-if="activeProject">
-        <div class="overlay-badge" v-if="highlightedProject && activeProject.id === highlightedProject.id">
-          <span class="badge-star">★</span> 当前项目
-        </div>
-        <div class="p-row main-info">
-          <div class="p-item main-item">
-            <div class="info-line info-line--name">
-              <span class="info-line__label">项目名称：</span>
-              <div class="project-name-marquee" :class="{ 'is-scrolling': shouldScrollProjectName }">
-                <div class="p-value large-text project-name-text" :class="{ 'is-scrolling': shouldScrollProjectName }">
-                  <span>{{ activeProject.name }}</span>
-                  <span v-if="shouldScrollProjectName" class="project-name-text__copy">{{ activeProject.name }}</span>
+      <dv-border-box-13>
+        <div class="project-info-overlay" v-if="activeProject">
+          <div class="overlay-badge" v-if="highlightedProject && activeProject.id === highlightedProject.id">
+            <span class="badge-star">★</span> 当前项目
+          </div>
+          <div class="p-row main-info">
+            <div class="p-item main-item">
+              <div class="info-line info-line--name">
+                <span class="info-line__label">项目名称：</span>
+                <div class="project-name-marquee" :class="{ 'is-scrolling': shouldScrollProjectName }">
+                  <div class="p-value large-text project-name-text" :class="{ 'is-scrolling': shouldScrollProjectName }">
+                    <span>{{ activeProject.name }}</span>
+                    <span v-if="shouldScrollProjectName" class="project-name-text__copy">{{ activeProject.name }}</span>
+                  </div>
                 </div>
               </div>
+              <div class="info-line">
+                <span class="info-line__label">项目地：</span>
+                <span class="p-value large-text info-line__value">{{ projectMapLabel(activeProject) || '-' }}</span>
+              </div>
             </div>
-            <div class="info-line">
-              <span class="info-line__label">项目地：</span>
-              <span class="p-value large-text info-line__value">{{ projectMapLabel(activeProject) || '-' }}</span>
+          </div>
+          <div class="p-row p-row--metrics">
+            <div class="p-item">
+              <div class="p-label">构件数量</div>
+              <div class="p-value num-font">{{ activeProject.beamColumnCount }}</div>
+            </div>
+            <div class="p-item p-item--right">
+              <div class="p-label">已检根数</div>
+              <div class="p-value num-font">{{ activeProject.inspectedCount }}</div>
+            </div>
+          </div>
+          <div class="p-row p-row--metrics">
+            <div class="p-item">
+              <div class="p-label p-label--two-line">
+                <span>一次装配</span>
+                <span>合格数量</span>
+              </div>
+              <div class="p-value num-font qualified">{{ activeProject.qualifiedCount }}</div>
+            </div>
+            <div class="p-item p-item--right">
+              <div class="p-label p-label--two-line">
+                <span>一次装配</span>
+                <span>合格率</span>
+              </div>
+              <div class="p-value num-font rate">{{ activeProject.qualifiedRate }}</div>
             </div>
           </div>
         </div>
-        <div class="p-row p-row--metrics">
-          <div class="p-item">
-            <div class="p-label">构件数量</div>
-            <div class="p-value num-font">{{ activeProject.beamColumnCount }}</div>
-          </div>
-          <div class="p-item p-item--right">
-            <div class="p-label">已检根数</div>
-            <div class="p-value num-font">{{ activeProject.inspectedCount }}</div>
-          </div>
+        <div v-else class="project-info-overlay project-info-overlay--empty">
+          <div class="project-empty-title">当前项目</div>
+          <div class="project-empty-sub">请在地图或项目管理中选择项目</div>
         </div>
-        <div class="p-row p-row--metrics">
-          <div class="p-item">
-            <div class="p-label p-label--two-line">
-              <span>一次装配</span>
-              <span>合格数量</span>
-            </div>
-            <div class="p-value num-font qualified">{{ activeProject.qualifiedCount }}</div>
-          </div>
-          <div class="p-item p-item--right">
-            <div class="p-label p-label--two-line">
-              <span>一次装配</span>
-              <span>合格率</span>
-            </div>
-            <div class="p-value num-font rate">{{ activeProject.qualifiedRate }}</div>
-          </div>
-        </div>
-      </div>
 
-      <dv-border-box-13>
         <div class="quanguo" @click="getData('china')" v-if="code !== 'china'">
           中国
         </div>
@@ -652,6 +655,30 @@ export default {
     init(name, data, data2, highlightData) {
       let top = 45;
       let zoom = 1.05;
+      const aspectScale = 0.78;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1920;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1080;
+
+      let layoutCenter = ['60%', '52%'];
+      let layoutSize = '82%';
+
+      if (viewportWidth >= 2560) {
+        layoutCenter = ['57%', '52%'];
+        layoutSize = '96%';
+      } else if (viewportWidth >= 2200) {
+        layoutCenter = ['57.5%', '52%'];
+        layoutSize = '92%';
+      } else if (viewportWidth >= 1800) {
+        layoutCenter = ['58.5%', '52%'];
+        layoutSize = '88%';
+      } else if (viewportWidth <= 1500) {
+        layoutCenter = ['61%', '52%'];
+        layoutSize = '78%';
+      }
+
+      if (viewportHeight <= 900) {
+        layoutSize = `${Math.max(74, parseFloat(layoutSize) - 3)}%`;
+      }
 
       // 根据主题模式动态设置颜色
       const isLightTheme = localStorage.getItem('themeMode') === 'light';
@@ -685,7 +712,9 @@ export default {
           selectedMode: false, //是否允许选中多个区域
           zoom: zoom,
           top: top,
-          // aspectScale: 0.78,
+          aspectScale: aspectScale,
+          layoutCenter: layoutCenter,
+          layoutSize: layoutSize,
           show: false,
         },
         series: [
@@ -693,13 +722,15 @@ export default {
             name: "MAP",
             type: "map",
             map: name,
-            // aspectScale: 0.78,
             data: data,
             // data: [1,100],
             selectedMode: false, //是否允许选中多个区域
             zoom: zoom,
             geoIndex: 1,
             top: top,
+            aspectScale: aspectScale,
+            layoutCenter: layoutCenter,
+            layoutSize: layoutSize,
             tooltip: { show: false },
             label: {
               show: false,
@@ -1824,14 +1855,38 @@ export default {
 
     .project-info-overlay {
       position: absolute;
-      top: 8px;
-      left: 10px;
+      top: 14px;
+      left: 16px;
       background: rgba(0, 30, 60, 0.85);
       border: 1px solid rgba(0, 186, 255, 0.4);
-      border-radius: 8px;
-      padding: 12px 10px;
-      z-index: 10;
-      min-width: 200px;
+      border-radius: 12px;
+      padding: 14px 14px 14px;
+      width: clamp(290px, 16vw, 340px);
+      min-width: clamp(290px, 16vw, 340px);
+      z-index: 8;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+
+      &.project-info-overlay--empty {
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .project-empty-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #e8fbff;
+      }
+
+      .project-empty-sub {
+        font-size: 12px;
+        color: rgba(232, 251, 255, 0.65);
+        text-align: center;
+      }
+
       .overlay-badge {
         position: absolute;
         top: -12px;
@@ -1861,7 +1916,7 @@ export default {
         &.main-item {
           flex: 0 1 auto;
           min-width: 0;
-          max-width: 260px;
+          max-width: 100%;
           .info-line {
             display: flex;
             align-items: center;
@@ -1896,7 +1951,7 @@ export default {
             overflow: hidden;
             flex: 1 1 auto;
             min-width: 0;
-            max-width: 206px;
+            max-width: clamp(220px, 12vw, 270px);
           }
           .project-name-text {
             display: inline-flex;
@@ -1916,8 +1971,8 @@ export default {
           }
         }
         &.p-item--right {
-          width: 112px;
-          flex: 0 0 112px;
+          width: clamp(124px, 7vw, 144px);
+          flex: 0 0 clamp(124px, 7vw, 144px);
           margin-left: auto;
         }
       }
@@ -1928,10 +1983,24 @@ export default {
       }
     }
 
+    :deep(.dv-border-box-13) {
+      height: 100%;
+      width: 100%;
+    }
+
+    :deep(.border-box-content) {
+      height: 100%;
+      width: 100%;
+      position: relative;
+      padding: 8px 10px 10px;
+      box-sizing: border-box;
+    }
+
     .quanguo {
       position: absolute;
-      right: 100px;
-      top: -46px;
+      right: 106px;
+      top: 10px;
+      z-index: 20;
       width: 80px;
       height: 28px;
       border: 1px solid #00eded;
@@ -1946,8 +2015,9 @@ export default {
     }
     .manage-btn {
       position: absolute;
-      right: 20px;
-      top: -46px;
+      right: 18px;
+      top: 10px;
+      z-index: 20;
       width: 80px;
       height: 28px;
       border: 1px solid #00eded;
@@ -1962,6 +2032,10 @@ export default {
       font-size: 12px;
     }
 
+    :deep(#CenterMap) {
+      width: 100%;
+      height: 100%;
+    }
   }
 }
 

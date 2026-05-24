@@ -23,10 +23,12 @@
             :key="'project-' + projectIfcUrl"
             :ifcUrl="projectIfcUrl"
             :projectId="selectedElement && selectedElement.projectId ? selectedElement.projectId : (currentPlanItem && currentPlanItem.projectId ? currentPlanItem.projectId : '')"
+            :highlightedIds="currentProjectHighlightIds"
             :enablePick="false"
             :showHints="false"
             :backgroundColor="0x051020"
             :useIframeMode="true"
+            :useDatabaseIndex="true"
             embedMode="minimal"
             @model-loaded="onProjectModelLoaded"
           />
@@ -46,10 +48,10 @@
       <div class="model_view">
         <div class="view_title view_title--with-action">
           <span class="view_title__text"><span class="dot"></span> 构件模型</span>
-          <div v-if="todayPlanList.length > 0" class="component-nav">
+          <div v-if="currentProjectPlanList.length > 0" class="component-nav">
             <button type="button" class="btn-nav" :disabled="currentPlanIndex <= 0" @click="prevComponent">‹ 上</button>
-            <span class="nav-counter">{{ currentPlanIndex + 1 }}/{{ todayPlanList.length }}</span>
-            <button type="button" class="btn-nav" :disabled="currentPlanIndex >= todayPlanList.length - 1" @click="nextComponent">下 ›</button>
+            <span class="nav-counter">{{ currentPlanIndex + 1 }}/{{ currentProjectPlanList.length }}</span>
+            <button type="button" class="btn-nav" :disabled="currentPlanIndex >= currentProjectPlanList.length - 1" @click="nextComponent">下 ›</button>
           </div>
         </div>
         <div class="canvas_wrap component_ifc_wrap">
@@ -127,28 +129,67 @@
 
     <!-- 项目模型全屏放大层（移出 flex 容器，避免占位） -->
     <div
-      v-if="projectViewExpanded && projectIfcUrl"
+      v-show="projectIfcUrl"
       class="project-ifc-fullscreen"
+      :class="{ 'project-ifc-fullscreen--open': projectViewExpanded }"
       @click.self="projectViewExpanded = false"
     >
       <div class="project-ifc-fullscreen__panel" @click.stop>
         <div class="project-ifc-fullscreen__head">
-          <span>项目模型 — 放大查看</span>
-          <button type="button" class="project-ifc-fullscreen__close" @click="projectViewExpanded = false">✕ 关闭</button>
+          <div class="project-ifc-fullscreen__title">
+            <span>项目模型 — 放大查看</span>
+          </div>
+          <div class="project-ifc-fullscreen__actions">
+            <button type="button" class="project-ifc-fullscreen__restore" @click="projectViewExpanded = false">还原</button>
+          </div>
         </div>
         <div class="project-ifc-fullscreen__body">
-          <AdvancedIfcViewer
-            :key="'project-fs-' + projectIfcUrl"
-            ref="projectViewerFs"
-            :ifcUrl="projectIfcUrl"
-            :projectId="selectedElement && selectedElement.projectId ? selectedElement.projectId : (currentPlanItem && currentPlanItem.projectId ? currentPlanItem.projectId : '')"
-            :enablePick="false"
-            :showHints="false"
-            :backgroundColor="0x051020"
-            :useIframeMode="true"
-            embedMode="minimal"
-            @model-loaded="onProjectModelLoaded"
-          />
+          <div class="project-ifc-fullscreen__viewer">
+            <AdvancedIfcViewer
+              v-if="projectIfcUrl"
+              :key="'project-fs-' + projectIfcUrl"
+              ref="projectViewerFs"
+              :ifcUrl="projectIfcUrl"
+              :projectId="selectedElement && selectedElement.projectId ? selectedElement.projectId : (currentPlanItem && currentPlanItem.projectId ? currentPlanItem.projectId : '')"
+              :highlightedIds="currentProjectHighlightIds"
+              :enablePick="true"
+              :showHints="false"
+              :backgroundColor="0x051020"
+              :useIframeMode="true"
+              :useDatabaseIndex="true"
+              embedMode="minimal"
+              @model-loaded="onProjectModelLoaded"
+              @viewer-ready="onProjectViewerReady"
+              @element-click="onExpandedProjectElementClick"
+              @element-dblclick="onExpandedProjectElementClick"
+            />
+          </div>
+          <aside class="project-ifc-fullscreen__sidebar">
+            <div class="project-ifc-fullscreen__sidebar-head">
+              <span>当前检测构件</span>
+              <span class="project-ifc-fullscreen__sidebar-count">{{ currentProjectPlanList.length }}</span>
+            </div>
+            <div v-if="currentProjectPlanList.length" class="project-ifc-fullscreen__list">
+              <button
+                v-for="(item, index) in currentProjectPlanList"
+                :key="`${item.projectId || 'p'}-${item.componentId || item.ifcElementId || index}`"
+                type="button"
+                class="project-ifc-fullscreen__list-item"
+                :class="{ 'is-active': index === currentPlanIndex }"
+                @click="focusPlanItemInProjectViewer(index)"
+              >
+                <span class="project-ifc-fullscreen__list-mark">
+                  {{ item.componentMark || item.componentName || item.ifcElementId || '未命名构件' }}
+                </span>
+                <span class="project-ifc-fullscreen__list-meta">
+                  {{ item.type || '未分类' }}
+                </span>
+              </button>
+            </div>
+            <div v-else class="project-ifc-fullscreen__empty">
+              暂无当前检测构件
+            </div>
+          </aside>
         </div>
       </div>
     </div>
@@ -179,7 +220,9 @@ export default {
 
       // 中间「项目模型」
       projectIfcUrl: '',
+      activeProjectId: '',
       projectViewExpanded: false,
+      projectViewerFocusRetry: null,
 
       // 今日检测计划（驱动左侧构件详情视口，与中间格子完全无关）
       todayPlanList: [],
@@ -192,8 +235,24 @@ export default {
   },
 
   computed: {
+    currentProjectPlanList() {
+      const activeProjectId = String(this.activeProjectId || '').trim()
+      if (!activeProjectId) return this.todayPlanList
+      return this.todayPlanList.filter((item) => String(item && item.projectId ? item.projectId : '').trim() === activeProjectId)
+    },
     currentPlanItem() {
-      return this.todayPlanList[this.currentPlanIndex] || null;
+      return this.currentProjectPlanList[this.currentPlanIndex] || null;
+    },
+    currentProjectHighlightIds() {
+      const expressID = Number(this.currentPlanItem && this.currentPlanItem.ifcElementId);
+      const ids = Number.isFinite(expressID) && expressID > 0 ? [expressID] : [];
+      console.log('[RightBottom] currentProjectHighlightIds', {
+        currentPlanIndex: this.currentPlanIndex,
+        expressID,
+        ids,
+        componentMark: this.currentPlanItem && (this.currentPlanItem.componentMark || this.currentPlanItem.componentName || '')
+      });
+      return ids;
     },
     canOpenCurrentComponentModel() {
       return !!(
@@ -204,12 +263,20 @@ export default {
       );
     },
     componentPlaceholderTitle() {
-      if (!this.currentPlanItem) return '暂无今日检测计划或计划中无关联 IFC 构件';
+      if (!this.currentPlanItem) {
+        return this.activeProjectId
+          ? '当前项目没有检测计划，请添加检测计划或切换当前项目'
+          : '暂无今日检测计划或计划中无关联 IFC 构件';
+      }
       if (!this.canOpenCurrentComponentModel) return '当前计划未关联可显示的 IFC 构件';
       return '当前构件模型正在加载';
     },
     componentPlaceholderSub() {
-      if (!this.currentPlanItem) return '在「项目构件管理」中勾选构件并设置检测日期为今天';
+      if (!this.currentPlanItem) {
+        return this.activeProjectId
+          ? '当前项目下暂无可用于检测的构件计划'
+          : '在「项目构件管理」中勾选构件并设置检测日期为今天';
+      }
       if (!this.canOpenCurrentComponentModel) return '请检查该计划是否已同步 IFC 文件与构件 expressID';
       return '项目模型保持整模静止，左侧直接显示当前单构件';
     }
@@ -222,6 +289,18 @@ export default {
           fileId: val,
           filename: this.plyEmptyTitle,
           syncSource: 'right-bottom',
+        });
+      }
+    },
+    projectViewExpanded(val) {
+      if (val) {
+        this.scheduleProjectViewerFocus();
+        [180, 520, 1100].forEach((ms) => {
+          setTimeout(() => {
+            if (this.projectViewExpanded) {
+              this.scheduleProjectViewerFocus();
+            }
+          }, ms);
         });
       }
     }
@@ -245,6 +324,7 @@ export default {
   },
 
   beforeDestroy() {
+    this.clearProjectViewerFocusRetry();
     window.removeEventListener('keydown', this.onKeydown);
     window.removeEventListener('storage', this.onStorageChange);
     if (this.$bus) {
@@ -305,7 +385,7 @@ export default {
             ifcElementId: item.ifcElementId || '',
             ifcGlobalId: item.ifcGlobalId || '',
           }));
-          this.currentPlanIndex = 0;
+          this.resetCurrentPlanIndex();
           this.syncComponentInfo();
           return;
         }
@@ -324,16 +404,47 @@ export default {
     },
 
     nextComponent() {
-      if (this.currentPlanIndex < this.todayPlanList.length - 1) {
+      if (this.currentPlanIndex < this.currentProjectPlanList.length - 1) {
         this.currentPlanIndex++;
         this.syncComponentInfo();
       }
     },
 
+    setCurrentPlanIndex(index) {
+      if (!Number.isInteger(index)) return;
+      if (index < 0 || index >= this.currentProjectPlanList.length) return;
+      if (index === this.currentPlanIndex) {
+        this.scheduleProjectViewerFocus();
+        return;
+      }
+      this.currentPlanIndex = index;
+      this.syncComponentInfo();
+    },
+
+    focusPlanItemInProjectViewer(index) {
+      if (!Number.isInteger(index)) return;
+      if (index < 0 || index >= this.currentProjectPlanList.length) return;
+
+      if (index !== this.currentPlanIndex) {
+        this.currentPlanIndex = index;
+        this.syncComponentInfo();
+      }
+
+      this.forceProjectViewerSelection({
+        isolateOnly: false,
+        retry: true
+      });
+    },
+
     // ─── 同步第四格「当前构件检测信息」──────────────────────────────────
     syncComponentInfo() {
       const item = this.currentPlanItem;
-      if (!item) return;
+      if (!item) {
+        this.selectedElement = null;
+        this.currentComponent = { id: '---', status: '', issues: [] };
+        this.clearProjectViewerFocusRetry();
+        return;
+      }
       const detail = item.detail || null;
       this.selectedElement = {
         expressID: Number(item.ifcElementId) || null,
@@ -354,6 +465,7 @@ export default {
         localStorage.setItem('current_component_mark', componentCode);
         window.dispatchEvent(new CustomEvent('current-component-mark-change', { detail: { mark: componentCode } }));
       }
+      this.scheduleProjectViewerFocus();
     },
 
     onComponentLoaded({ expressID, elementInfo }) {
@@ -386,20 +498,29 @@ export default {
         const res = await fetch('/api/active-project', { headers: getAuthHeaders() });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data && data.success && data.data) {
+          this.activeProjectId = data.data.id ? String(data.data.id) : '';
           if (data.data.ifcUrl) this.projectIfcUrl = this.resolveAbsUrl(data.data.ifcUrl);
+          this.resetCurrentPlanIndex();
+          this.syncComponentInfo();
           return;
         }
       } catch (e) { /* ignore */ }
+      this.activeProjectId = '';
       this.projectIfcUrl = '';
     },
 
     onProjectIfcChange(ifcUrl) { this.projectIfcUrl = this.resolveAbsUrl(ifcUrl) || ''; },
     onProjectChange(project) {
+      this.activeProjectId = project && project.id ? String(project.id) : '';
       if (project && project.ifcUrl) {
         this.projectIfcUrl = this.resolveAbsUrl(project.ifcUrl);
+        this.resetCurrentPlanIndex();
+        this.syncComponentInfo();
         return;
       }
       this.projectIfcUrl = '';
+      this.resetCurrentPlanIndex();
+      this.syncComponentInfo();
     },
     onProjectChangeAndCheck(project) {
       this.onProjectChange(project);
@@ -409,6 +530,16 @@ export default {
     onProjectListUpdate() {
       this.loadTodayPlan();
       this.checkSelectedComponent();
+    },
+    resetCurrentPlanIndex() {
+      const list = this.currentProjectPlanList
+      if (!list.length) {
+        this.currentPlanIndex = 0
+        return
+      }
+      if (this.currentPlanIndex < 0 || this.currentPlanIndex >= list.length) {
+        this.currentPlanIndex = 0
+      }
     },
     onStorageChange(e) {
       if (e.key === 'cm_selected_component') this.checkSelectedComponent();
@@ -449,8 +580,109 @@ export default {
       }
     },
 
+    findPlanIndexByElement(element) {
+      if (!element || typeof element !== 'object') return -1;
+      const expressID = Number(element.expressID);
+      const componentMark = String(
+        element.componentMark ||
+        element.componentName ||
+        element.name ||
+        ''
+      ).trim().toLowerCase();
+
+      let index = this.todayPlanList.findIndex((item) => Number(item.ifcElementId) === expressID);
+      if (index >= 0) return index;
+
+      if (componentMark) {
+        index = this.todayPlanList.findIndex((item) => {
+          const mark = String(item.componentMark || item.componentName || '').trim().toLowerCase();
+          return mark && mark === componentMark;
+        });
+      }
+      return index;
+    },
+
+    onExpandedProjectElementClick(element) {
+      this.onProjectElementClick(element);
+      const index = this.findPlanIndexByElement(element);
+      if (index >= 0) {
+        this.setCurrentPlanIndex(index);
+        this.forceProjectViewerSelection({
+          isolateOnly: false,
+          retry: true
+        });
+      }
+    },
+
     onProjectModelLoaded({ elementCount }) {
       console.log(`[RightBottom] Project model loaded: ${elementCount} elements`);
+      this.scheduleProjectViewerFocus();
+    },
+
+    onProjectViewerReady() {
+      this.scheduleProjectViewerFocus();
+    },
+
+    getProjectViewerRef() {
+      if (!this.projectViewExpanded) return this.$refs.projectViewer;
+      return this.$refs.projectViewerFs;
+    },
+
+    scheduleProjectViewerFocus() {
+      this.clearProjectViewerFocusRetry();
+      this.$nextTick(() => {
+        this.syncExpandedProjectViewerSelection(0, { isolateOnly: false });
+      });
+    },
+
+    clearProjectViewerFocusRetry() {
+      if (this.projectViewerFocusRetry) {
+        clearTimeout(this.projectViewerFocusRetry);
+        this.projectViewerFocusRetry = null;
+      }
+    },
+
+    forceProjectViewerSelection({ isolateOnly = false, retry = false } = {}) {
+      this.clearProjectViewerFocusRetry();
+      this.$nextTick(() => {
+        this.syncExpandedProjectViewerSelection(0, { isolateOnly, retry });
+      });
+    },
+
+    syncExpandedProjectViewerSelection(attempt = 0, options = {}) {
+      const item = this.currentPlanItem;
+      if (!item) return;
+      const expressID = Number(item.ifcElementId);
+      if (!Number.isFinite(expressID) || expressID <= 0) return;
+      const componentMark = String(item.componentMark || item.componentName || '').trim();
+      const viewer = this.getProjectViewerRef();
+      if (!viewer || typeof viewer.highlightElement !== 'function') {
+        console.log('[RightBottom] project viewer not ready yet', {
+          attempt,
+          projectViewExpanded: this.projectViewExpanded,
+          expressID,
+          componentMark
+        });
+        if (options.retry !== false && attempt < 12) {
+          this.projectViewerFocusRetry = setTimeout(() => {
+            this.syncExpandedProjectViewerSelection(attempt + 1, options);
+          }, 180);
+        }
+        return;
+      }
+      this.clearProjectViewerFocusRetry();
+      console.log('[RightBottom] sync expanded project viewer selection', {
+        attempt,
+        viewerRef: this.projectViewExpanded ? 'projectViewerFs' : 'projectViewer',
+        expressID,
+        componentMark,
+        projectIfcUrl: this.projectIfcUrl
+      });
+      viewer.highlightElement(expressID, {
+        focus: true,
+        isolateOnly: options.isolateOnly === true,
+        componentMark
+      });
     },
 
     // ─── PLY 点云事件 ─────────────────────────────────────────────────────────
@@ -554,6 +786,7 @@ export default {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
   padding: 6px;
   box-sizing: border-box;
 
@@ -798,27 +1031,37 @@ export default {
   }
 
   .project-ifc-fullscreen {
-    position: fixed;
+    position: absolute;
     inset: 0;
     z-index: 400000;
-    background: rgba(2, 12, 28, 0.88);
+    background: transparent;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 6px;
     box-sizing: border-box;
-    backdrop-filter: blur(8px);
+    backdrop-filter: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+  }
+
+  .project-ifc-fullscreen--open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
   }
 
   .project-ifc-fullscreen__panel {
-    width: min(96vw, 1400px);
-    height: min(92vh, 900px);
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    border-radius: 12px;
-    border: 1px solid rgba(0, 212, 255, 0.35);
-    box-shadow: 0 0 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    background: linear-gradient(160deg, rgba(5, 24, 48, 0.98) 0%, rgba(2, 14, 32, 0.99) 100%);
+    border-radius: 10px;
+    border: 1px solid rgba(0, 212, 255, 0.22);
+    box-shadow: none;
+    background: linear-gradient(160deg, rgba(5, 24, 48, 0.995) 0%, rgba(2, 14, 32, 0.995) 100%);
     overflow: hidden;
   }
 
@@ -827,12 +1070,33 @@ export default {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 16px;
+    padding: 10px 14px;
     font-size: 14px;
     color: #00eaff;
     font-weight: 600;
     border-bottom: 1px solid rgba(0, 186, 255, 0.2);
     background: rgba(0, 30, 55, 0.6);
+  }
+
+  .project-ifc-fullscreen__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .project-ifc-fullscreen__restore {
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid rgba(73, 231, 194, 0.42);
+    background: rgba(73, 231, 194, 0.12);
+    color: #baffef;
+    cursor: pointer;
+    &:hover {
+      background: rgba(73, 231, 194, 0.22);
+      border-color: rgba(73, 231, 194, 0.68);
+    }
   }
 
   .project-ifc-fullscreen__close {
@@ -853,10 +1117,113 @@ export default {
     flex: 1;
     min-height: 0;
     position: relative;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
     :deep(.adv-ifc-wrapper) {
       width: 100%;
       height: 100%;
     }
+  }
+
+  .project-ifc-fullscreen__viewer {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+  }
+
+  .project-ifc-fullscreen__sidebar {
+    width: 340px;
+    flex: 0 0 340px;
+    border-left: 1px solid rgba(0, 186, 255, 0.22);
+    background:
+      linear-gradient(180deg, rgba(5, 28, 54, 0.985) 0%, rgba(4, 18, 38, 0.99) 100%);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .project-ifc-fullscreen__sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px 14px;
+    color: #dffcff;
+    font-size: 15px;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(0, 186, 255, 0.16);
+    background: rgba(0, 186, 255, 0.08);
+    letter-spacing: 0.5px;
+  }
+
+  .project-ifc-fullscreen__sidebar-count {
+    color: rgba(223, 252, 255, 0.78);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(73, 231, 194, 0.16);
+  }
+
+  .project-ifc-fullscreen__list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .project-ifc-fullscreen__list-item {
+    appearance: none;
+    width: 100%;
+    text-align: left;
+    border: 1px solid rgba(0, 186, 255, 0.18);
+    background: rgba(10, 42, 78, 0.72);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: #ffffff;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    &:hover {
+      border-color: rgba(0, 186, 255, 0.48);
+      background: rgba(12, 55, 100, 0.88);
+      transform: translateY(-1px);
+    }
+
+    &.is-active {
+      border-color: rgba(73, 231, 194, 0.72);
+      background: linear-gradient(135deg, rgba(73, 231, 194, 0.22) 0%, rgba(16, 94, 83, 0.72) 100%);
+      box-shadow: 0 0 0 1px rgba(73, 231, 194, 0.22) inset, 0 8px 24px rgba(0, 0, 0, 0.18);
+    }
+  }
+
+  .project-ifc-fullscreen__list-mark {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.4;
+    word-break: break-all;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+  }
+
+  .project-ifc-fullscreen__list-meta {
+    font-size: 12px;
+    color: rgba(219, 241, 255, 0.72);
+  }
+
+  .project-ifc-fullscreen__empty {
+    padding: 20px 18px;
+    color: rgba(255, 255, 255, 0.52);
+    font-size: 13px;
   }
 }
 

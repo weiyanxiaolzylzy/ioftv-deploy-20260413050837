@@ -90,3 +90,33 @@ export function getAuthHeaders(extra = {}) {
     ...extra
   }
 }
+
+export async function saveBlobWithPicker(blob, filename = 'download.bin', options = {}) {
+  const safeName = String(filename || 'download.bin').trim() || 'download.bin'
+  const blobData = blob instanceof Blob ? blob : new Blob([blob], options.type ? { type: options.type } : undefined)
+  const pickerTypes = Array.isArray(options.types) ? options.types : []
+
+  if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: safeName,
+      types: pickerTypes.length ? pickerTypes : undefined
+    })
+    const writable = await handle.createWritable()
+    await writable.write(blobData)
+    await writable.close()
+    return { savedWithPicker: true, filename: safeName }
+  }
+
+  const url = URL.createObjectURL(blobData)
+  try {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = safeName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+  return { savedWithPicker: false, filename: safeName }
+}

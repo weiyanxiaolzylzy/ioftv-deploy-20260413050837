@@ -45,7 +45,136 @@
 
         <!-- 原模板样式表格（可编辑） -->
         <div class="report-mini-body">
-          <table class="report-table" ref="reportTable">
+          <table v-if="isSpecialTemplateLayout && specialTemplateSchema.layout === 'box-beam-sheet1'" class="report-table report-table--special report-table--box-beam" ref="reportTable">
+            <thead>
+              <tr>
+                <th colspan="10" class="special-title-cell">{{ specialTemplateTitle }}</th>
+              </tr>
+              <tr>
+                <th class="col-seq">序号</th>
+                <th colspan="2" class="col-item">项目</th>
+                <th colspan="2" class="col-tolerance">允许偏差（mm）</th>
+                <th colspan="2" class="col-design">设计尺寸</th>
+                <th colspan="2" class="col-selfcheck">实测值</th>
+                <th class="col-remark">备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in visibleRows"
+                :key="row.key"
+                :class="{ 'row-ng': row.verdict === '不合格' }"
+              >
+                <td v-if="row.seqRender" class="col-seq" :rowspan="row.seqRowspan">{{ row.seq }}</td>
+                <td
+                  v-if="row.itemMainRender"
+                  class="col-item-main"
+                  :rowspan="row.itemMainRowspan"
+                  :colspan="row.itemSub ? 1 : 2"
+                >
+                  {{ row.itemMain }}
+                </td>
+                <td
+                  v-if="row.itemSub && row.itemSubRender"
+                  class="col-item-sub"
+                  :rowspan="row.itemSubRowspan"
+                >
+                  {{ row.itemSub }}
+                </td>
+                <td
+                  v-if="row.toleranceRender"
+                  class="col-tolerance-main"
+                  :rowspan="row.toleranceRowspan"
+                  :colspan="row.toleranceColspan || 1"
+                >
+                  {{ row.toleranceText }}
+                </td>
+                <td v-if="(row.toleranceColspan || 1) === 1" class="col-tolerance-sub">{{ row.toleranceSub || '' }}</td>
+                <td colspan="2" class="col-design box-design-cell editable-cell">
+                  <input
+                    type="text"
+                    class="table-input"
+                    v-model="row.designValue"
+                    @input="recalcRow(row)"
+                    placeholder="输入设计尺寸"
+                  />
+                </td>
+                <td colspan="2" class="col-selfcheck editable-cell">
+                  <input
+                    type="text"
+                    class="table-input"
+                    :class="{'input-error': row.verdict === '不合格'}"
+                    v-model="row.measuredValue"
+                    @input="recalcRow(row)"
+                    placeholder="输入实测值"
+                  />
+                </td>
+                <td class="col-remark">{{ autoRemark(row) || row.remark || '' }}</td>
+              </tr>
+              <tr v-if="!visibleRows.length">
+                <td colspan="10" class="empty-cell">暂无数据，请先选择模板</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table v-else-if="isSpecialTemplateLayout" class="report-table report-table--special" ref="reportTable">
+            <thead>
+              <tr>
+                <th colspan="7" class="special-title-cell">{{ specialTemplateTitle }}</th>
+              </tr>
+              <tr>
+                <th colspan="2" class="special-meta-cell">项目名称：{{ activeProjectName || '—' }}</th>
+                <th colspan="2" class="special-meta-cell">构件编号：{{ componentNo || '—' }}</th>
+                <th colspan="3" class="special-meta-cell">班组：{{ activeAssignment.groupName || '—' }}</th>
+              </tr>
+              <tr>
+                <th class="col-seq">序号</th>
+                <th class="col-section">部位</th>
+                <th class="col-item">检测项目</th>
+                <th class="col-tolerance">允许偏差</th>
+                <th class="col-special-measured">实测偏差</th>
+                <th class="col-special-verdict">判定</th>
+                <th class="col-remark">备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(row, index) in visibleRows"
+                :key="row.key"
+                :class="{ 'row-ng': row.verdict === '不合格' }"
+              >
+                <td class="col-seq">{{ row.seq }}</td>
+                <td
+                  v-if="shouldRenderSpecialSectionLabel(row, index)"
+                  class="col-section section-cell"
+                  :rowspan="specialSectionRowspan(row)"
+                >
+                  {{ row.sectionLabel || '通用项' }}
+                </td>
+                <td class="col-item">{{ row.itemName }}</td>
+                <td class="col-tolerance">{{ row.toleranceText }}</td>
+                <td class="col-special-measured editable-cell">
+                  <input
+                    type="text"
+                    class="table-input"
+                    :class="{'input-error': row.verdict === '不合格'}"
+                    v-model="row.measuredValue"
+                    @input="recalcRow(row)"
+                    placeholder="输入偏差值"
+                  />
+                </td>
+                <td class="col-special-verdict">
+                  <span class="status-badge" :class="getVerdictClass(row.verdict)">{{ row.verdict || '待测' }}</span>
+                </td>
+                <td class="col-remark">{{ autoRemark(row) || row.remark || '' }}</td>
+              </tr>
+              <tr v-if="!visibleRows.length">
+                <td colspan="7" class="empty-cell">暂无数据，请先选择模板</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table v-else class="report-table" ref="reportTable">
             <thead>
               <tr>
                 <th class="col-seq">序号</th>
@@ -65,7 +194,15 @@
                 <td class="col-seq">{{ row.seq }}</td>
                 <td class="col-item">{{ row.itemName }}</td>
                 <td class="col-tolerance">{{ row.toleranceText }}</td>
-                <td class="col-design">{{ row.designValue }}</td>
+                <td class="col-design editable-cell">
+                  <input
+                    type="text"
+                    class="table-input"
+                    v-model="row.designValue"
+                    @input="recalcRow(row)"
+                    placeholder="输入设计尺寸"
+                  />
+                </td>
                 <td class="col-selfcheck editable-cell">
                   <input
                     type="text"
@@ -288,7 +425,7 @@
 
 <script>
 import axios from 'axios'
-import { canEditFeature, getAuthHeaders } from '@/utils'
+import { canEditFeature, getAuthHeaders, saveBlobWithPicker } from '@/utils'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 
@@ -361,6 +498,179 @@ const seededNumber = (seed) => {
   return x / 0xffffffff
 }
 
+const SPECIAL_TEMPLATE_SCHEMAS = {
+  'H型钢柱质检表.xlsx': {
+    aliases: ['H型钢柱检验记录表'],
+    layout: 'box-beam-sheet1',
+    rows: [
+      { seq: '1', itemMain: '柱底面到柱端的距离H', toleranceText: 'H/1500，且不超过±8', itemName: '柱底面到柱端的距离H', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '2', itemMain: '柱底面到牛腿支撑面距离L', toleranceText: '±L/2000，且不超过±5.0', itemName: '柱底面到牛腿支撑面距离L', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '3', itemMain: '柱底面到连接板距离L1', toleranceText: '±L1/2000，且不超过±5.0', itemName: '柱底面到连接板距离L1', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '4', itemMain: '连接面到连接板距离L2', toleranceText: '±L2/2000，且不超过±5.0', itemName: '连接面到连接板距离L2', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '5', itemMain: '柱撑连接板距端部距离L3', toleranceText: '±L3/2000，且不超过±5.0', itemName: '柱撑连接板距端部距离L3', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '6', itemMain: '牛腿面的翘曲', toleranceText: '2.0', itemName: '牛腿面的翘曲', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '柱身弯曲矢高', toleranceText: 'H/1200, 且不应大于8', itemName: '柱身弯曲矢高', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '翼缘对腹板的垂直度', itemSub: '连接处', toleranceText: '±3.0', itemName: '翼缘对腹板的垂直度-连接处', seqRowspan: 2, itemMainRowspan: 2, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '翼缘对腹板的垂直度', itemSub: '其他处', toleranceText: 'b/100，且不大于5.0', itemName: '翼缘对腹板的垂直度-其他处', toleranceColspan: 2 },
+      { seq: '9', itemMain: '柱身扭曲', itemSub: '牛腿处', toleranceText: '3', itemName: '柱身扭曲-牛腿处', seqRowspan: 2, itemMainRowspan: 2, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '9', itemMain: '柱身扭曲', itemSub: '其他处', toleranceText: '8', itemName: '柱身扭曲-其他处', toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '连接处-高', toleranceText: '±3.0', toleranceSub: '高', itemName: '柱截面尺寸（连接处）-高', seqRowspan: 4, itemMainRowspan: 4, itemSubRowspan: 1, toleranceRowspan: 2, toleranceColspan: 1 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '连接处-宽', toleranceText: '±3.0', toleranceSub: '宽', itemName: '柱截面尺寸（连接处）-宽', toleranceColspan: 1 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '非连接处-高', toleranceText: '±4.0', toleranceSub: '高', itemName: '柱截面尺寸（非连接处）-高', itemSubRowspan: 1, toleranceRowspan: 2, toleranceColspan: 1 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '非连接处-宽', toleranceText: '±4.0', toleranceSub: '宽', itemName: '柱截面尺寸（非连接处）-宽', toleranceColspan: 1 },
+      { seq: '11', itemMain: '柱脚底板平面度', toleranceText: '5', itemName: '柱脚底板平面度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '12', itemMain: '柱脚螺栓孔中心对柱轴线的距离a', toleranceText: '3', itemName: '柱脚螺栓孔中心对柱轴线的距离a', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 }
+    ]
+  },
+  '十字柱质检表.xlsx': {
+    aliases: ['十字柱检验记录表'],
+    layout: 'box-beam-sheet1',
+    rows: [
+      { seq: '1', itemMain: '柱脚螺栓孔中心对柱轴线的距离', toleranceText: '3.0', itemName: '柱脚螺栓孔中心对柱轴线的距离', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '2', itemMain: '柱脚底板平面度', toleranceText: '5.0', itemName: '柱脚底板平面度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '3', itemMain: '翼缘板对腹板的垂直度', itemSub: '连接处', toleranceText: '1.5', itemName: '翼缘板对腹板的垂直度-连接处', seqRowspan: 2, itemMainRowspan: 2, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '3', itemMain: '翼缘板对腹板的垂直度', itemSub: '其他处', toleranceText: 'b/100，且不应大于3.0', itemName: '翼缘板对腹板的垂直度-其他处', toleranceColspan: 2 },
+      { seq: '4', itemMain: '柱身板垂直度', toleranceText: 'h/150，且不应大于5.0', itemName: '柱身板垂直度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '5', itemMain: '柱底到耳板第一孔中心的距离', toleranceText: '±L/2000', itemName: '柱底到耳板第一孔中心的距离', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '一节柱高度', toleranceText: '±3.0', itemName: '一节柱高度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '一节柱的柱身扭曲', toleranceText: 'h/250，且不应大于5.0', itemName: '一节柱的柱身扭曲', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '9', itemMain: '柱身弯曲矢高', toleranceText: 'H/1500，且不应大于5.0', itemName: '柱身弯曲矢高', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '连接处-长', toleranceText: '长 ±3.0', itemName: '柱截面尺寸（连接处）-长', seqRowspan: 4, itemMainRowspan: 4, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '连接处-宽', toleranceText: '宽 ±3.0', itemName: '柱截面尺寸（连接处）-宽', toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '非连接处-长', toleranceText: '长 ±4.0', itemName: '柱截面尺寸（非连接处）-长', toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '非连接处-宽', toleranceText: '宽 ±4.0', itemName: '柱截面尺寸（非连接处）-宽', toleranceColspan: 2 }
+    ]
+  },
+  '无理论值圆管柱尺寸及焊缝质检表.xlsx': {
+    aliases: ['圆管柱构件检验记录表'],
+    layout: 'box-beam-sheet1',
+    rows: [
+      { seq: '1', itemMain: '弯曲矢高', toleranceText: 'H/1000，且不大于5mm', itemName: '弯曲矢高', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '2', itemMain: '柱底板对圆管的垂直', toleranceText: 'b/100,且 ≤2.0', itemName: '柱底板对圆管的垂直', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '3', itemMain: '构件总长度', toleranceText: '±2mm', itemName: '构件总长度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '5', itemMain: '对接焊缝错台', toleranceText: '0.1t且≤3mm', itemName: '对接焊缝错台', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '6', itemMain: '柱底板对圆管的定位', toleranceText: '±2.0', itemName: '柱底板对圆管的定位', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）1', itemSub: '下翼缘板距离柱底板底面尺寸', toleranceText: '≤2.0', itemName: '一层-牛腿（搭焊板）1-下翼缘板距离柱底板底面尺寸', seqRowspan: 12, itemMainRowspan: 3, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）1', itemSub: '十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '一层-牛腿（搭焊板）1-十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）1', itemSub: '非十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '一层-牛腿（搭焊板）1-非十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）2', itemSub: '下翼缘板距离柱底板底面尺寸', toleranceText: '≤2.0', itemName: '一层-牛腿（搭焊板）2-下翼缘板距离柱底板底面尺寸', itemMainRowspan: 3, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）2', itemSub: '十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '一层-牛腿（搭焊板）2-十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）2', itemSub: '非十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '一层-牛腿（搭焊板）2-非十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）3', itemSub: '下翼缘板距离柱底板底面尺寸', toleranceText: '≤2.0', itemName: '一层-牛腿（搭焊板）3-下翼缘板距离柱底板底面尺寸', itemMainRowspan: 3, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）3', itemSub: '十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '一层-牛腿（搭焊板）3-十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）3', itemSub: '非十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '一层-牛腿（搭焊板）3-非十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）4', itemSub: '下翼缘板距离柱底板底面尺寸', toleranceText: '≤2.0', itemName: '一层-牛腿（搭焊板）4-下翼缘板距离柱底板底面尺寸', itemMainRowspan: 3, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）4', itemSub: '十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '一层-牛腿（搭焊板）4-十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '7', itemMain: '一层-牛腿（搭焊板）4', itemSub: '非十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '一层-牛腿（搭焊板）4-非十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）1', itemSub: '下翼缘板距离柱底板底面尺寸', toleranceText: '≤2.0', itemName: '二层-牛腿（搭焊板）1-下翼缘板距离柱底板底面尺寸', seqRowspan: 12, itemMainRowspan: 3, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）1', itemSub: '十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '二层-牛腿（搭焊板）1-十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）1', itemSub: '非十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '二层-牛腿（搭焊板）1-非十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）2', itemSub: '下翼缘板距离柱底板底面尺寸', toleranceText: '≤2.0', itemName: '二层-牛腿（搭焊板）2-下翼缘板距离柱底板底面尺寸', itemMainRowspan: 3, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）2', itemSub: '十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '二层-牛腿（搭焊板）2-十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）2', itemSub: '非十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '二层-牛腿（搭焊板）2-非十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）3', itemSub: '下翼缘板距离柱底板底面尺寸', toleranceText: '≤2.0', itemName: '二层-牛腿（搭焊板）3-下翼缘板距离柱底板底面尺寸', itemMainRowspan: 3, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）3', itemSub: '十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '二层-牛腿（搭焊板）3-十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）3', itemSub: '非十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '二层-牛腿（搭焊板）3-非十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）4', itemSub: '下翼缘板距离柱底板底面尺寸', toleranceText: '≤2.0', itemName: '二层-牛腿（搭焊板）4-下翼缘板距离柱底板底面尺寸', itemMainRowspan: 3, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）4', itemSub: '十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '二层-牛腿（搭焊板）4-十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '8', itemMain: '二层-牛腿（搭焊板）4', itemSub: '非十字线定位牛腿的定位弧长', toleranceText: '±1.0', itemName: '二层-牛腿（搭焊板）4-非十字线定位牛腿的定位弧长', toleranceColspan: 2 },
+      { seq: '9', itemMain: '圆管上端头', itemSub: '椭圆度', toleranceText: '≤3mm', itemName: '圆管上端头-椭圆度', seqRowspan: 2, itemMainRowspan: 2, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '9', itemMain: '圆管上端头', itemSub: '周长', toleranceText: '≤2mm', itemName: '圆管上端头-周长', toleranceColspan: 2 },
+      { seq: '10', itemMain: '圆管下端头', itemSub: '椭圆度', toleranceText: '≤3mm', itemName: '圆管下端头-椭圆度', seqRowspan: 2, itemMainRowspan: 2, itemSubRowspan: 1, toleranceColspan: 2 },
+      { seq: '10', itemMain: '圆管下端头', itemSub: '周长', toleranceText: '≤2mm', itemName: '圆管下端头-周长', toleranceColspan: 2 }
+    ]
+  },
+  '梁质检表.xlsx': {
+    aliases: ['梁测量数据记录表'],
+    layout: 'box-beam-sheet1',
+    rows: [
+      { seq: '1', itemMain: '截面高度h', toleranceText: 'h＜500，±2.0', itemName: '截面高度h-1', seqRowspan: 3, itemMainRowspan: 3, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '1', itemMain: '截面高度h', toleranceText: '500≤h≤1000，±3.0', itemName: '截面高度h-2', toleranceColspan: 2 },
+      { seq: '1', itemMain: '截面高度h', toleranceText: 'h＞1000，±4.0', itemName: '截面高度h-3', toleranceColspan: 2 },
+      { seq: '2', itemMain: '截面宽度b', toleranceText: '±3.0', itemName: '截面宽度b', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '3', itemMain: '腹板中心偏移e', toleranceText: '2.0', itemName: '腹板中心偏移e', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '4', itemMain: '翼缘板垂直度Δ', toleranceText: 'b/100且不大于3.0', itemName: '翼缘板垂直度Δ', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '5', itemMain: '扭曲', toleranceText: 'h/250，且不大于5.0', itemName: '扭曲', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '6', itemMain: '弯曲矢高', toleranceText: 'L/1000且不大于10.0', itemName: '弯曲矢高', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '腹板局部平面度', toleranceText: 't≤6，4.0', itemName: '腹板局部平面度-1', seqRowspan: 3, itemMainRowspan: 3, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '腹板局部平面度', toleranceText: '6＜t＜14，3.0', itemName: '腹板局部平面度-2', toleranceColspan: 2 },
+      { seq: '7', itemMain: '腹板局部平面度', toleranceText: 't≥14，2.0', itemName: '腹板局部平面度-3', toleranceColspan: 2 },
+      { seq: '8', itemMain: '梁两端孔到翼板的距离', toleranceText: '孔1，±1', itemName: '梁两端孔到翼板的距离-孔1', seqRowspan: 2, itemMainRowspan: 2, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '梁两端孔到翼板的距离', toleranceText: '孔2，±1', itemName: '梁两端孔到翼板的距离-孔2', toleranceColspan: 2 },
+      { seq: '9', itemMain: '同一组内孔距', toleranceText: 'd1≤500；±1', itemName: '同一组内孔距-1', seqRowspan: 2, itemMainRowspan: 2, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '9', itemMain: '同一组内孔距', toleranceText: '501＜d1＜1200，±1.5', itemName: '同一组内孔距-2', toleranceColspan: 2 },
+      { seq: '10', itemMain: '相邻两组端部孔距', toleranceText: 'd2≤500；±1.5', itemName: '相邻两组端部孔距-1', seqRowspan: 4, itemMainRowspan: 4, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '10', itemMain: '相邻两组端部孔距', toleranceText: '500＜d2＜1200，±2.0', itemName: '相邻两组端部孔距-2', toleranceColspan: 2 },
+      { seq: '10', itemMain: '相邻两组端部孔距', toleranceText: '1200＜d2＜3000，±2.5', itemName: '相邻两组端部孔距-3', toleranceColspan: 2 },
+      { seq: '10', itemMain: '相邻两组端部孔距', toleranceText: 'd2＞3000，±3.0', itemName: '相邻两组端部孔距-4', toleranceColspan: 2 },
+      { seq: '11', itemMain: '孔1到隔板1', toleranceText: '孔距标准', itemName: '孔1到隔板1', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '12', itemMain: '隔板1到隔板2', toleranceText: '孔距标准', itemName: '隔板1到隔板2', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '13', itemMain: '隔板2到隔板3', toleranceText: '孔距标准', itemName: '隔板2到隔板3', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '14', itemMain: '隔板到孔2', toleranceText: '孔距标准', itemName: '隔板到孔2', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 }
+    ]
+  },
+  '箱型柱质检表.xlsx': {
+    aliases: ['箱型柱检验记录表'],
+    layout: 'box-beam-sheet1',
+    rows: [
+      { seq: '1', itemMain: '柱脚螺栓孔中心对柱轴线的距离a', toleranceText: '3.0', itemName: '柱脚螺栓孔中心对柱轴线的距离a', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '2', itemMain: '柱脚底板平面度', toleranceText: '5.0', itemName: '柱脚底板平面度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '3', itemMain: '牛腿的翘曲或扭曲', toleranceText: '2.0', itemName: '牛腿的翘曲或扭曲', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '4', itemMain: '柱底到牛腿（连接板）上第一孔中心的距离', toleranceText: '±L1/2000', toleranceSub: '1', itemName: '柱底到牛腿（连接板）上第一孔中心的距离-1', seqRowspan: 4, itemMainRowspan: 4, toleranceRowspan: 4, toleranceColspan: 1 },
+      { seq: '4', itemMain: '柱底到牛腿（连接板）上第一孔中心的距离', toleranceText: '±L1/2000', toleranceSub: '2', itemName: '柱底到牛腿（连接板）上第一孔中心的距离-2', toleranceColspan: 1 },
+      { seq: '4', itemMain: '柱底到牛腿（连接板）上第一孔中心的距离', toleranceText: '±L1/2000', toleranceSub: '3', itemName: '柱底到牛腿（连接板）上第一孔中心的距离-3', toleranceColspan: 1 },
+      { seq: '4', itemMain: '柱底到牛腿（连接板）上第一孔中心的距离', toleranceText: '±L1/2000', toleranceSub: '4', itemName: '柱底到牛腿（连接板）上第一孔中心的距离-4', toleranceColspan: 1 },
+      { seq: '5', itemMain: '柱底到耳板第一孔中心的距离', toleranceText: '±L2/2000', itemName: '柱底到耳板第一孔中心的距离', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '6', itemMain: '一节柱高度H', toleranceText: '±3.0', itemName: '一节柱高度H', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '7', itemMain: '柱身弯曲矢高', toleranceText: 'H/1500，且不应大于5.0', itemName: '柱身弯曲矢高', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '箱型截面连接处对角线差', toleranceText: '3.0', itemName: '箱型截面连接处对角线差', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '9', itemMain: '箱型柱身板垂直度', toleranceText: 'h（b)/150，且不大于5.0', itemName: '箱型柱身板垂直度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '连接处-长', toleranceText: '长±3.0', itemName: '柱截面尺寸(连接处)-长', seqRowspan: 4, itemMainRowspan: 4, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '连接处-宽', toleranceText: '宽±3.0', itemName: '柱截面尺寸(连接处)-宽', toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '非连接处-长', toleranceText: '长±4.0', itemName: '柱截面尺寸(非连接处)-长', toleranceColspan: 2 },
+      { seq: '10', itemMain: '柱截面尺寸', itemSub: '非连接处-宽', toleranceText: '宽±4.0', itemName: '柱截面尺寸(非连接处)-宽', toleranceColspan: 2 }
+    ]
+  },
+  '箱型梁质检表.xlsx': {
+    aliases: ['箱型梁检验记录表'],
+    layout: 'box-beam-sheet1',
+    rows: [
+      { seq: '1', itemMain: '梁端部到连接板上第一孔中心的距离L1', toleranceText: '±1', toleranceSub: '1', itemName: '梁端部到连接板上第一孔中心的距离L1-1', seqRowspan: 4, itemMainRowspan: 4, toleranceRowspan: 4, toleranceColspan: 1 },
+      { seq: '1', itemMain: '梁端部到连接板上第一孔中心的距离L1', toleranceText: '±1', toleranceSub: '2', itemName: '梁端部到连接板上第一孔中心的距离L1-2', toleranceColspan: 1 },
+      { seq: '1', itemMain: '梁端部到连接板上第一孔中心的距离L1', toleranceText: '±1', toleranceSub: '3', itemName: '梁端部到连接板上第一孔中心的距离L1-3', toleranceColspan: 1 },
+      { seq: '1', itemMain: '梁端部到连接板上第一孔中心的距离L1', toleranceText: '±1', toleranceSub: '4', itemName: '梁端部到连接板上第一孔中心的距离L1-4', toleranceColspan: 1 },
+      { seq: '2', itemMain: '梁长度L', toleranceText: '±L/2500且不超过5.0', itemName: '梁长度L', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '3', itemMain: '弯曲矢高', toleranceText: 'L/2000，且不应大于10.0', itemName: '弯曲矢高', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '4', itemMain: '箱型截面连接处对角线差', toleranceText: '3.0', itemName: '箱型截面连接处对角线差', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '5', itemMain: '箱型梁身板垂直度', toleranceText: 'h（b)/150，且不大于5.0', itemName: '箱型梁身板垂直度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '6', itemMain: '梁截面尺寸', itemSub: '连接处-长', toleranceText: '长±3.0', itemName: '梁截面尺寸(连接处)-长', seqRowspan: 4, itemMainRowspan: 4, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '6', itemMain: '梁截面尺寸', itemSub: '连接处-宽', toleranceText: '宽±3.0', itemName: '梁截面尺寸(连接处)-宽', toleranceColspan: 2 },
+      { seq: '6', itemMain: '梁截面尺寸', itemSub: '非连接处-长', toleranceText: '长±4.0', itemName: '梁截面尺寸(非连接处)-长', toleranceColspan: 2 },
+      { seq: '6', itemMain: '梁截面尺寸', itemSub: '非连接处-宽', toleranceText: '宽±4.0', itemName: '梁截面尺寸(非连接处)-宽', toleranceColspan: 2 }
+    ]
+  },
+  '钢管桁架质检表.xlsx': {
+    aliases: ['钢管桁架测量数据记录表'],
+    layout: 'box-beam-sheet1',
+    rows: [
+      { seq: '1', itemMain: '杆件长度', toleranceText: '±3.0', itemName: '杆件长度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '2', itemMain: '直径d', toleranceText: '±d/500 ±5.0', itemName: '直径d', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '3', itemMain: '弯曲矢高', toleranceText: 'L/1500, 且不应大于5.0', itemName: '弯曲矢高', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '4', itemMain: '对口错边', toleranceText: 't/10, 且不应大于3.0', itemName: '对口错边', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '5', itemMain: '桁架最外端两个孔或两端支撑面最外侧距离', itemSub: 'L≤24m', toleranceText: '﹢3.0 ﹣7.0', itemName: '桁架最外端两个孔或两端支撑面最外侧距离-L≤24m', seqRowspan: 2, itemMainRowspan: 2, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '5', itemMain: '桁架最外端两个孔或两端支撑面最外侧距离', itemSub: 'L≥24m', toleranceText: '﹢3.0 ﹣7.0', itemName: '桁架最外端两个孔或两端支撑面最外侧距离-L≥24m', toleranceColspan: 2 },
+      { seq: '7', itemMain: '桁架跨中高度', toleranceText: '±10.0', itemName: '桁架跨中高度', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '桁架跨中拱度(要求起拱)', toleranceText: '±L/5000', itemName: '桁架跨中拱度(要求起拱)', seqRowspan: 2, itemMainRowspan: 1, itemSubRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '8', itemMain: '桁架跨中拱度(未要求起拱)', toleranceText: '10.0 -5.0', itemName: '桁架跨中拱度(未要求起拱)', toleranceColspan: 2 },
+      { seq: '9', itemMain: '相邻节间弦杆弯曲（受压除外）', toleranceText: 'L/1000', itemName: '相邻节间弦杆弯曲（受压除外）', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '10', itemMain: '支撑面到第一个安装孔距离a', toleranceText: '±1.0', itemName: '支撑面到第一个安装孔距离a', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '11', itemMain: '檩条连接支座间距', toleranceText: '±3.0', itemName: '檩条连接支座间距', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '12', itemMain: '交点错位', toleranceText: '3', itemName: '交点错位', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 },
+      { seq: '13', itemMain: '端部偏差', toleranceText: '2', itemName: '端部偏差', seqRowspan: 1, itemMainRowspan: 1, toleranceRowspan: 1, toleranceColspan: 2 }
+    ]
+  }
+}
+
 export default {
   name: 'ResultsView',
   props: {
@@ -419,6 +729,23 @@ export default {
     selectedTemplate() {
       return this.qcTemplates.find((t) => t.id === this.selectedTemplateId) || null
     },
+    specialTemplateSchema() {
+      if (!this.selectedTemplate) return null
+      const fileName = String(this.selectedTemplate.fileName || '').trim()
+      const title = String(this.selectedTemplate.title || '').trim()
+      if (fileName && SPECIAL_TEMPLATE_SCHEMAS[fileName]) return SPECIAL_TEMPLATE_SCHEMAS[fileName]
+      if (title && SPECIAL_TEMPLATE_SCHEMAS[title]) return SPECIAL_TEMPLATE_SCHEMAS[title]
+      return Object.values(SPECIAL_TEMPLATE_SCHEMAS).find((schema) => Array.isArray(schema.aliases) && schema.aliases.includes(title)) || null
+    },
+    isSpecialTemplateLayout() {
+      return !!(this.specialTemplateSchema && this.specialTemplateSchema.layout)
+    },
+    specialTemplateTitle() {
+      if (this.specialTemplateSchema && this.selectedTemplate && this.selectedTemplate.title) {
+        return this.selectedTemplate.title.replace(/\.xlsx?$/i, '')
+      }
+      return this.selectedTemplate && this.selectedTemplate.title ? this.selectedTemplate.title : '质检记录表'
+    },
     activeAssignment() {
       const detail = this.selectedComponentDetail || {}
       return {
@@ -453,14 +780,8 @@ export default {
     defectStats() {
       const buckets = new Map()
       this.currentNgRows.forEach((row) => {
-        const name = String(row.itemName || '')
-        let defectType = '未分类'
-        if (name.includes('扭曲') || name.includes('旁弯')) defectType = '扭曲旁弯'
-        else if (name.includes('长度')) defectType = '构件长度'
-        else if (name.includes('截面')) defectType = '构件截面'
-        else if (name.includes('孔距')) defectType = '孔距'
-        else if (name.includes('牛腿') || name.includes('连接板') || name.includes('节点')) defectType = '节点尺寸'
-        else if (name.includes('劲板')) defectType = '劲板尺寸'
+        let defectType = String(row.defectType || '').trim()
+        if (!defectType) defectType = '未分类'
 
         if (!buckets.has(defectType)) buckets.set(defectType, { defectType, count: 0 })
         buckets.get(defectType).count += 1
@@ -474,7 +795,7 @@ export default {
       return this.canEdit && !!this.selectedTemplateId && !this.currentNgRows.length && !this.defectMode && this.rows.length > 0 && this.componentStatus !== '已出库'
     },
     canExportPdf() {
-      return this.canEdit && !!this.selectedTemplateId && !this.exporting && this.componentStatus === '已出库'
+      return this.canEdit && !!this.selectedTemplateId && !this.exporting && this.rows.length > 0
     }
   },
   mounted() {
@@ -507,6 +828,20 @@ export default {
         if (stored) this.componentNo = stored
       }
     },
+    clearCurrentComponentSelection(clearStorage = false) {
+      this.componentNo = ''
+      this.selectedComponentContext = null
+      this.selectedComponentDetail = null
+      this.selectedComponentId = ''
+      this.componentStatus = '待检测'
+      this.componentQualifiedAt = ''
+      this.componentOutboundAt = ''
+      this.rows = []
+      if (clearStorage) {
+        localStorage.removeItem('current_component_mark')
+        localStorage.removeItem('cm_selected_component')
+      }
+    },
     syncComponentFromStorage() {
       const storedMark = localStorage.getItem('current_component_mark') || ''
       let nextMark = String(storedMark || '').trim()
@@ -519,7 +854,11 @@ export default {
         }
       } catch (e) {}
 
-      if (!nextMark || nextMark === String(this.componentNo || '').trim()) return
+      if (!nextMark) {
+        this.clearCurrentComponentSelection(false)
+        return
+      }
+      if (nextMark === String(this.componentNo || '').trim()) return
       this.componentNo = nextMark
       this.selectedComponentContext = null
       this.selectedComponentDetail = null
@@ -727,6 +1066,54 @@ export default {
     },
     buildRows() {
       if (!this.selectedTemplate) { this.rows = []; return }
+      if (this.specialTemplateSchema) {
+        this.rows = this.specialTemplateSchema.rows.map((item, idx) => {
+          const prev = idx > 0 ? this.specialTemplateSchema.rows[idx - 1] : null
+          let prevToleranceCoversCurrent = false
+          for (let back = idx - 1; back >= 0; back--) {
+            const candidate = this.specialTemplateSchema.rows[back]
+            if (candidate.seq !== item.seq) break
+            if (
+              candidate.toleranceText === item.toleranceText &&
+              (candidate.toleranceColspan || 1) === (item.toleranceColspan || 1) &&
+              back + (candidate.toleranceRowspan || 1) > idx
+            ) {
+              prevToleranceCoversCurrent = true
+              break
+            }
+          }
+          return ({
+          key: `${this.selectedTemplateId}:special:${idx}:${item.seq}:${item.itemName}`,
+          seq: item.seq || idx + 1,
+          seqDisplay: item.seqDisplay || item.seq || idx + 1,
+          sectionLabel: item.sectionLabel || '',
+          itemMain: item.itemMain || '',
+          itemSub: item.itemSub || '',
+          toleranceSub: item.toleranceSub || '',
+          seqRowspan: item.seqRowspan || 1,
+          itemMainRowspan: item.itemMainRowspan || 1,
+          itemSubRowspan: item.itemSubRowspan || 1,
+          toleranceRowspan: item.toleranceRowspan || 1,
+          toleranceColspan: item.toleranceColspan || 1,
+          seqRender: !idx || item.seq !== this.specialTemplateSchema.rows[idx - 1].seq,
+          itemMainRender: !idx || item.itemMain !== this.specialTemplateSchema.rows[idx - 1].itemMain || (item.itemMainRowspan || 1) > 1,
+          itemSubRender: !item.itemSub || !idx || item.itemSub !== this.specialTemplateSchema.rows[idx - 1].itemSub || item.itemMain !== this.specialTemplateSchema.rows[idx - 1].itemMain || (item.itemSubRowspan || 1) > 1,
+          toleranceRender: !prevToleranceCoversCurrent,
+          itemName: item.itemName || `项目${item.seq || idx + 1}`,
+          designValue: '',
+          measuredValue: '',
+          deviation: null,
+          toleranceText: item.toleranceText || '',
+          tol: parseNumericTolerance(item.toleranceText),
+          verdict: '待测',
+          remark: '',
+          deviationClass: this.getDeviationClass(null, parseNumericTolerance(item.toleranceText)),
+          verdictClass: this.getVerdictClass('待测'),
+          forcedPass: false,
+          _dirty: false
+        })})
+        return
+      }
       const rows = []
       this.selectedTemplate.items.forEach((item, idx) => {
         const seed = `${this.componentNo}::${this.selectedTemplateId}::${idx}`
@@ -746,6 +1133,7 @@ export default {
           key: `${this.selectedTemplateId}:${idx}:${item.seq || idx}:${item.name || ''}`,
           seq: item.seq || idx + 1,
           itemName: item.name || `项目${item.seq || idx + 1}`,
+          defectType: item.defectType || '',
           designValue: item.designValue || String(Number(designValue.toFixed(4))),
           measuredValue: verdict === '待测' ? '' : String(Number(measuredValue.toFixed(4))), // 实测值 - 可编辑
           deviation: verdict === '待测' ? null : deviation,
@@ -844,6 +1232,24 @@ export default {
     },
     recalcRow(row) {
       if (!this.canEdit) return
+      if (this.isSpecialTemplateLayout) {
+        const m = Number(String(row.measuredValue || '').replace(/[^0-9.+-]/g, ''))
+        if (String(row.measuredValue || '').trim() === '' || Number.isNaN(m) || row.tol == null || Number.isNaN(row.tol)) {
+          row.deviation = null
+          row.verdict = '待测'
+          row.deviationClass = this.getDeviationClass(null, row.tol)
+          row.verdictClass = this.getVerdictClass('待测')
+          row.forcedPass = false
+          return
+        }
+        row.deviation = m
+        row.verdict = Math.abs(m) > Number(row.tol) ? '不合格' : '合格'
+        row.deviationClass = this.getDeviationClass(m, row.tol)
+        row.verdictClass = this.getVerdictClass(row.verdict)
+        row.forcedPass = false
+        row._dirty = true
+        return
+      }
       const d = Number(row.designValue)
       const m = Number(row.measuredValue)
       if (Number.isNaN(d) || Number.isNaN(m) || row.tol == null || Number.isNaN(row.tol)) {
@@ -861,6 +1267,19 @@ export default {
     },
     forceRowPass(row) {
       if (!this.canEdit || !row) return
+      if (this.isSpecialTemplateLayout) {
+        const tol = Number(row.tol)
+        if (Number.isNaN(tol) || tol <= 0) return
+        const safeDeviation = tol * 0.6
+        row.measuredValue = String(Number(safeDeviation.toFixed(4)))
+        row.deviation = safeDeviation
+        row.verdict = '合格'
+        row.deviationClass = this.getDeviationClass(safeDeviation, tol)
+        row.verdictClass = this.getVerdictClass('合格')
+        row.forcedPass = true
+        row._dirty = true
+        return
+      }
       const d = Number(row.designValue)
       const tol = Number(row.tol)
       if (Number.isNaN(d) || Number.isNaN(tol) || tol <= 0) return
@@ -915,6 +1334,7 @@ export default {
         assignment: this.activeAssignment,
         rows: (this.rows || []).map((row) => ({
           seq: row.seq,
+          sectionLabel: row.sectionLabel || '',
           itemName: row.itemName,
           designValue: row.designValue,
           toleranceText: row.toleranceText,
@@ -923,6 +1343,166 @@ export default {
           remark: this.autoRemark(row) || row.remark || ''
         }))
       }
+    },
+    specialSectionRowspan(row) {
+      const label = row && row.sectionLabel ? row.sectionLabel : ''
+      if (!label) return 1
+      return this.visibleRows.filter((item) => String(item.sectionLabel || '') === label).length || 1
+    },
+    shouldRenderSpecialSectionLabel(row, index) {
+      const label = row && row.sectionLabel ? row.sectionLabel : ''
+      if (!label) return true
+      if (index === 0) return true
+      const prev = this.visibleRows[index - 1]
+      return String(prev && prev.sectionLabel ? prev.sectionLabel : '') !== label
+    },
+    async buildPdfBlob() {
+      const tableEl = this.$refs.reportTable
+      if (!tableEl) throw new Error('表格不存在')
+
+      const container = document.createElement('div')
+      container.style.cssText = `
+        position: fixed;
+        left: -9999px;
+        top: 0;
+        width: 1200px;
+        background: white;
+        padding: 30px;
+        font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif;
+      `
+
+      const title = document.createElement('div')
+      title.style.cssText = `
+        text-align: center;
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 20px;
+        color: #333;
+      `
+      title.textContent = `${this.selectedTemplate?.title || 'H型钢柱质检表'}`
+      container.appendChild(title)
+
+      const headerMeta = document.createElement('div')
+      headerMeta.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 16px;
+        font-size: 14px;
+        color: #333;
+        flex-wrap: wrap;
+      `
+      headerMeta.innerHTML = `
+        <span>项目名称：${this.activeProjectName || '—'}</span>
+        <span>班组：${this.activeAssignment.groupName || '—'}</span>
+        <span>构件编号：${this.componentNo || '—'}</span>
+      `
+      container.appendChild(headerMeta)
+
+      const tableClone = tableEl.cloneNode(true)
+      tableClone.style.cssText = `
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      `
+
+      const titleHeaderRow = tableClone.querySelector('thead tr:first-child')
+      if (titleHeaderRow) {
+        titleHeaderRow.remove()
+      }
+
+      const inputs = tableClone.querySelectorAll('input')
+      inputs.forEach(input => {
+        const td = input.parentElement
+        td.textContent = input.value || '-'
+      })
+
+      const cells = tableClone.querySelectorAll('td, th')
+      cells.forEach(cell => {
+        cell.style.cssText = `
+          border: 1px solid #333;
+          padding: 8px 10px;
+          text-align: center;
+          color: #333;
+          background: white !important;
+        `
+      })
+
+      const headers = tableClone.querySelectorAll('th')
+      headers.forEach(th => {
+        th.style.cssText = `
+          background: #4472C4 !important;
+          color: white !important;
+          font-weight: bold;
+          border: 1px solid #333;
+        `
+      })
+
+      const ngRows = tableClone.querySelectorAll('.row-ng')
+      ngRows.forEach(row => {
+        row.style.background = '#FFE0E0'
+      })
+
+      container.appendChild(tableClone)
+
+      const footerMeta = document.createElement('div')
+      footerMeta.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        margin-top: 18px;
+        font-size: 14px;
+        color: #333;
+        flex-wrap: wrap;
+      `
+      footerMeta.innerHTML = `
+        <span>班组长：${this.activeAssignment.teamLeaderName || '—'}</span>
+        <span>质检员：${this.activeAssignment.qualityInspectorName || '—'}</span>
+        <span>质量员：${this.activeAssignment.qualityManagerName || '—'}</span>
+        <span>检测日期：${this.componentQualifiedAt || new Date().toLocaleDateString('zh-CN')}</span>
+      `
+      container.appendChild(footerMeta)
+
+      document.body.appendChild(container)
+      try {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        const canvas = await html2canvas(container, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false
+        })
+
+        const imgData = canvas.toDataURL('image/png')
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        })
+
+        const pageWidth = pdf.internal.pageSize.getWidth()
+        const pageHeight = pdf.internal.pageSize.getHeight()
+        const imgWidth = canvas.width
+        const imgHeight = canvas.height
+        const ratio = Math.min((pageWidth - 20) / imgWidth, (pageHeight - 20) / imgHeight)
+        const pdfWidth = imgWidth * ratio
+        const pdfHeight = imgHeight * ratio
+
+        pdf.addImage(imgData, 'PNG', 10, 10, pdfWidth, pdfHeight)
+        return pdf.output('blob')
+      } finally {
+        if (container.parentNode) document.body.removeChild(container)
+      }
+    },
+    async blobToBase64(blob) {
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ''))
+        reader.onerror = () => reject(new Error('PDF 编码失败'))
+        reader.readAsDataURL(blob)
+      })
     },
     async confirmScheduleReinspection() {
       if (!this.reinspectionDate) {
@@ -949,14 +1529,26 @@ export default {
       }
     },
     async confirmOutbound() {
+      const ngCount = this.currentNgRows.length
+      if (ngCount > 0) {
+        this.$Message.warning(`当前存在 ${ngCount} 项不合格，不能出库`)
+        return
+      }
+      if (!this.selectedComponentId) {
+        this.$Message.warning('当前未选中有效构件，不能出库')
+        return
+      }
       try {
         const inspectionDate = new Date().toISOString().slice(0, 10)
+        const pdfBlob = await this.buildPdfBlob()
+        const pdfBase64 = await this.blobToBase64(pdfBlob)
         const res = await axios.post('/api/qc/outbound', {
           projectId: this.activeProjectId,
           componentId: this.selectedComponentId,
           inspectionDate,
           rows: this.rows,
-          reportSnapshot: this.buildReportSnapshot()
+          reportSnapshot: this.buildReportSnapshot(),
+          pdfBase64
         }, { headers: getAuthHeaders() })
         const payload = this.normalizeAxiosPayload(res)
         if (!payload || !payload.success) throw new Error((payload && payload.message) || '出库失败')
@@ -968,7 +1560,13 @@ export default {
         if (this.$bus) this.$bus.$emit('project-list-update')
         this.moveToNextPlanComponent()
       } catch (e) {
-        this.$Message.warning(e && e.message ? e.message : '出库失败')
+        const msg = e && e.message ? e.message : '出库失败'
+        if (msg === '存在不合格项，不能出库') {
+          const count = this.currentNgRows.length
+          this.$Message.warning(count > 0 ? `当前存在 ${count} 项不合格，不能出库` : msg)
+          return
+        }
+        this.$Message.warning(msg)
       }
     },
     async fetchReinspectionTasks() {
@@ -988,7 +1586,10 @@ export default {
         const payload = this.normalizeAxiosPayload(res)
         const list = payload && payload.success && Array.isArray(payload.data) ? payload.data : []
         const available = list.filter((item) => String(item.status || '').trim() !== '已出库')
-        if (!available.length) return
+        if (!available.length) {
+          this.clearCurrentComponentSelection(true)
+          return
+        }
         const currentMark = String(this.componentNo || '').trim()
         const currentIndex = available.findIndex((item) => String(item.componentMark || item.componentName || '').trim() === currentMark)
         const nextItem = available[currentIndex >= 0 && currentIndex < available.length - 1 ? currentIndex + 1 : 0]
@@ -1038,160 +1639,22 @@ export default {
     },
     async exportPDF() {
       if (!this.canEdit) { this.notifyNoPermission(); return }
-      if (!this.selectedTemplateId || this.componentStatus !== '已出库') return
+      if (!this.selectedTemplateId || !this.rows.length) return
 
       this.exporting = true
       try {
-        const tableEl = this.$refs.reportTable
-        if (!tableEl) {
-          this.$Message.warning('表格不存在')
-          this.exporting = false
-          return
-        }
-
-        // 创建临时容器用于 PDF 渲染
-        const container = document.createElement('div')
-        container.style.cssText = `
-          position: fixed;
-          left: -9999px;
-          top: 0;
-          width: 1200px;
-          background: white;
-          padding: 30px;
-          font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif;
-        `
-
-        // 添加标题
-        const title = document.createElement('div')
-        title.style.cssText = `
-          text-align: center;
-          font-size: 24px;
-          font-weight: bold;
-          margin-bottom: 20px;
-          color: #333;
-        `
-        title.textContent = `${this.selectedTemplate?.title || 'H型钢柱质检表'}`
-        container.appendChild(title)
-
-        const headerMeta = document.createElement('div')
-        headerMeta.style.cssText = `
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 20px;
-          margin-bottom: 16px;
-          font-size: 14px;
-          color: #333;
-          flex-wrap: wrap;
-        `
-        headerMeta.innerHTML = `
-          <span>项目名称：${this.activeProjectName || '—'}</span>
-          <span>班组：${this.activeAssignment.groupName || '—'}</span>
-          <span>构件编号：${this.componentNo || '—'}</span>
-        `
-        container.appendChild(headerMeta)
-
-        // 克隆表格并优化样式
-        const tableClone = tableEl.cloneNode(true)
-        tableClone.style.cssText = `
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 12px;
-        `
-
-        // 移除不需要的元素
-        const inputs = tableClone.querySelectorAll('input')
-        inputs.forEach(input => {
-          const td = input.parentElement
-          td.textContent = input.value || '-'
+        const pdfBlob = await this.buildPdfBlob()
+        await saveBlobWithPicker(pdfBlob, `${this.componentNo}_质检表.pdf`, {
+          type: 'application/pdf',
+          types: [
+            {
+              description: 'PDF 文档',
+              accept: {
+                'application/pdf': ['.pdf']
+              }
+            }
+          ]
         })
-
-        // 设置表格样式
-        const cells = tableClone.querySelectorAll('td, th')
-        cells.forEach(cell => {
-          cell.style.cssText = `
-            border: 1px solid #333;
-            padding: 8px 10px;
-            text-align: center;
-            color: #333;
-            background: white !important;
-          `
-        })
-
-        // 表头样式
-        const headers = tableClone.querySelectorAll('th')
-        headers.forEach(th => {
-          th.style.cssText = `
-            background: #4472C4 !important;
-            color: white !important;
-            font-weight: bold;
-            border: 1px solid #333;
-          `
-        })
-
-        // 不合格行高亮
-        const ngRows = tableClone.querySelectorAll('.row-ng')
-        ngRows.forEach(row => {
-          row.style.background = '#FFE0E0'
-        })
-
-        container.appendChild(tableClone)
-
-        const footerMeta = document.createElement('div')
-        footerMeta.style.cssText = `
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 20px;
-          margin-top: 18px;
-          font-size: 14px;
-          color: #333;
-          flex-wrap: wrap;
-        `
-        footerMeta.innerHTML = `
-          <span>班组长：${this.activeAssignment.teamLeaderName || '—'}</span>
-          <span>质检员：${this.activeAssignment.qualityInspectorName || '—'}</span>
-          <span>质量员：${this.activeAssignment.qualityManagerName || '—'}</span>
-          <span>检测日期：${this.componentQualifiedAt || new Date().toLocaleDateString('zh-CN')}</span>
-        `
-        container.appendChild(footerMeta)
-
-        document.body.appendChild(container)
-
-        // 等待渲染完成
-        await new Promise(resolve => setTimeout(resolve, 100))
-
-        // 使用 html2canvas 截图
-        const canvas = await html2canvas(container, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: '#ffffff',
-          logging: false
-        })
-
-        // 清理临时容器
-        document.body.removeChild(container)
-
-        // 创建 PDF
-        const imgData = canvas.toDataURL('image/png')
-        const pdf = new jsPDF({
-          orientation: 'landscape',
-          unit: 'mm',
-          format: 'a4'
-        })
-
-        const pageWidth = pdf.internal.pageSize.getWidth()
-        const pageHeight = pdf.internal.pageSize.getHeight()
-
-        const imgWidth = canvas.width
-        const imgHeight = canvas.height
-        const ratio = Math.min((pageWidth - 20) / imgWidth, (pageHeight - 20) / imgHeight)
-
-        const pdfWidth = imgWidth * ratio
-        const pdfHeight = imgHeight * ratio
-
-        pdf.addImage(imgData, 'PNG', 10, 10, pdfWidth, pdfHeight)
-        pdf.save(`${this.componentNo}_质检表.pdf`)
         this.$Message.success('PDF 导出成功')
       } catch (e) {
         console.error('PDF export error:', e)
@@ -1266,6 +1729,87 @@ export default {
   overflow: hidden;
   border-radius: 10px;
 }
+.report-table--special {
+  table-layout: fixed;
+}
+.report-table--box-beam .special-title-cell {
+  font-size: 26px !important;
+  padding: 18px 8px !important;
+  background: #ffffff !important;
+  color: #111111 !important;
+}
+.report-table--box-beam thead th {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border: 1px solid #1e1e1e !important;
+  font-size: 15px;
+  font-weight: 500;
+}
+.report-table--box-beam tbody td {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border: 1px solid #1e1e1e !important;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.report-table--box-beam tbody tr.row-ng td {
+  background: #fff1f1 !important;
+}
+.report-table--box-beam .table-input {
+  border: 1px solid #cfd5e2;
+  background: #ffffff;
+  color: #111111;
+}
+.report-table--box-beam .col-seq {
+  width: 72px;
+}
+.report-table--box-beam .col-item {
+  text-align: center !important;
+}
+.col-item-main {
+  width: 360px;
+  text-align: center !important;
+  padding: 10px 12px !important;
+  white-space: normal;
+  line-height: 1.8;
+}
+.col-item-sub {
+  width: 170px;
+  text-align: center !important;
+  padding: 10px 8px !important;
+  white-space: normal;
+  line-height: 1.7;
+}
+.report-table--box-beam .col-tolerance {
+  width: 170px;
+  text-align: center !important;
+  padding: 10px 8px !important;
+  font-size: 13px;
+}
+.col-tolerance-main {
+  width: 158px;
+  text-align: center !important;
+  padding: 10px 8px !important;
+  font-size: 13px;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+.col-tolerance-sub {
+  width: 78px;
+  text-align: center !important;
+  padding: 10px 8px !important;
+  font-size: 16px;
+}
+.box-design-cell {
+  width: 178px;
+  font-size: 16px;
+}
+.report-table--box-beam .col-selfcheck {
+  width: 188px;
+}
+.report-table--box-beam .col-remark {
+  width: 160px;
+}
 .report-table thead th {
   position: sticky; top: 0; z-index: 5; padding: 8px 4px;
   background: linear-gradient(180deg, #4d79cb 0%, #35579e 100%);
@@ -1276,6 +1820,19 @@ export default {
   color: #fff;
   letter-spacing: 0.5px;
   white-space: pre-wrap;
+}
+.special-title-cell {
+  font-size: 18px !important;
+  letter-spacing: 1px;
+  padding: 12px 8px !important;
+  background: linear-gradient(180deg, #5d88d8 0%, #4065ae 100%) !important;
+}
+.special-meta-cell {
+  font-size: 12px !important;
+  text-align: left !important;
+  padding: 8px 12px !important;
+  background: linear-gradient(180deg, #eff5ff 0%, #dbe7ff 100%) !important;
+  color: #27406f !important;
 }
 .report-table tbody td {
   padding: 7px 5px;
@@ -1291,12 +1848,23 @@ export default {
 
 /* 表格列宽 */
 .col-seq { width: 40px; }
+.col-section { width: 84px; }
 .col-item { width: 156px; text-align: left !important; padding-left: 10px !important; font-weight: 600; white-space: normal; line-height: 1.45; }
 .col-design { width: 86px; }
 .col-tolerance { width: 128px; font-size: 10px; text-align: left !important; padding-left: 8px !important; white-space: pre-wrap; line-height: 1.4; }
 .col-selfcheck { width: 110px; }
+.col-special-measured { width: 124px; }
+.col-special-verdict { width: 92px; }
 .col-leader { width: 88px; font-weight: bold; }
 .col-remark { width: 128px; text-align: left !important; padding-left: 10px !important; line-height: 1.45; }
+.section-cell {
+  background: linear-gradient(180deg, rgba(225, 235, 252, 0.98) 0%, rgba(212, 226, 248, 0.98) 100%) !important;
+  color: #29426d !important;
+  font-weight: 800;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 2px;
+}
 
 /* 可编辑单元格 */
 .editable-cell { padding: 2px !important; }

@@ -203,6 +203,42 @@ async function initDatabase() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`,
+        `CREATE TABLE IF NOT EXISTS component_qc_records (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+            component_mark TEXT DEFAULT '',
+            template_id TEXT DEFAULT '',
+            template_title TEXT DEFAULT '',
+            inspection_date TEXT DEFAULT '',
+            qc_result TEXT DEFAULT '',
+            is_outbound BOOLEAN DEFAULT FALSE,
+            outbound_date TEXT DEFAULT '',
+            report_snapshot_json TEXT DEFAULT '{}',
+            report_file_path TEXT DEFAULT '',
+            report_file_name TEXT DEFAULT '',
+            report_generated_at TEXT DEFAULT '',
+            team_name TEXT DEFAULT '',
+            team_leader TEXT DEFAULT '',
+            quality_inspector TEXT DEFAULT '',
+            quality_manager TEXT DEFAULT '',
+            reinspection_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS component_qc_record_items (
+            id TEXT PRIMARY KEY,
+            record_id TEXT NOT NULL REFERENCES component_qc_records(id) ON DELETE CASCADE,
+            seq INTEGER DEFAULT 0,
+            item_name TEXT DEFAULT '',
+            design_value TEXT DEFAULT '',
+            tolerance_text TEXT DEFAULT '',
+            measured_value TEXT DEFAULT '',
+            verdict TEXT DEFAULT '',
+            defect_type TEXT DEFAULT '',
+            remark TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
         `CREATE TABLE IF NOT EXISTS project_statistics (
             project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
             component_count INTEGER DEFAULT 0,
@@ -273,12 +309,18 @@ async function initDatabase() {
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS outbound_at TEXT DEFAULT ''`,
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS reinspection_count INTEGER DEFAULT 0`,
         `ALTER TABLE components ADD COLUMN IF NOT EXISTS qc_locked BOOLEAN DEFAULT FALSE`,
+        `ALTER TABLE component_outbound_records ADD COLUMN IF NOT EXISTS report_file_path TEXT DEFAULT ''`,
+        `ALTER TABLE component_outbound_records ADD COLUMN IF NOT EXISTS report_file_name TEXT DEFAULT ''`,
+        `ALTER TABLE component_outbound_records ADD COLUMN IF NOT EXISTS report_generated_at TEXT DEFAULT ''`,
         `CREATE INDEX IF NOT EXISTS idx_project_statistics_updated ON project_statistics(updated_at)`,
         `CREATE INDEX IF NOT EXISTS idx_components_project ON components(project_id)`,
         `CREATE INDEX IF NOT EXISTS idx_components_mark ON components(component_mark)`,
         `CREATE INDEX IF NOT EXISTS idx_components_status ON components(status)`,
         `CREATE INDEX IF NOT EXISTS idx_component_reinspection_tasks_component ON component_reinspection_tasks(component_id)`,
-        `CREATE INDEX IF NOT EXISTS idx_component_outbound_records_component ON component_outbound_records(component_id)`
+        `CREATE INDEX IF NOT EXISTS idx_component_outbound_records_component ON component_outbound_records(component_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_component_qc_records_component ON component_qc_records(component_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_component_qc_records_project ON component_qc_records(project_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_component_qc_record_items_record ON component_qc_record_items(record_id)`
     ];
     for (const sql of statements) {
         const res = await run(sql);
@@ -502,7 +544,6 @@ const data = {
          FROM components
          WHERE project_id = $1
            AND COALESCE(ifc_element_id, '') <> ''
-           AND ifc_type = 'IFCELEMENTASSEMBLY'
          ORDER BY created_at DESC`,
         [projectId]
     ),
@@ -534,8 +575,9 @@ const data = {
     createOutboundRecord: (record) => run(
         `INSERT INTO component_outbound_records (
             id, project_id, component_id, component_mark, team_name, team_leader, quality_inspector,
-            quality_manager, inspection_date, outbound_date, report_snapshot_json, status, created_at, updated_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+            quality_manager, inspection_date, outbound_date, report_snapshot_json, report_file_path,
+            report_file_name, report_generated_at, status, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
         [
             record.id,
             record.project_id,
@@ -548,8 +590,166 @@ const data = {
             record.inspection_date || '',
             record.outbound_date || '',
             record.report_snapshot_json || '{}',
+            record.report_file_path || '',
+            record.report_file_name || '',
+            record.report_generated_at || '',
             record.status || '已出库'
         ]
+    ),
+    createQcRecordWithItems: (record, items = []) => transaction(async (client) => {
+        await client.query(
+            `INSERT INTO component_qc_records (
+                id, project_id, component_id, component_mark, template_id, template_title, inspection_date,
+                qc_result, is_outbound, outbound_date, report_snapshot_json, report_file_path, report_file_name,
+                report_generated_at, team_name, team_leader, quality_inspector, quality_manager, reinspection_count,
+                created_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+            [
+                record.id,
+                record.project_id,
+                record.component_id,
+                record.component_mark || '',
+                record.template_id || '',
+                record.template_title || '',
+                record.inspection_date || '',
+                record.qc_result || '',
+                !!record.is_outbound,
+                record.outbound_date || '',
+                record.report_snapshot_json || '{}',
+                record.report_file_path || '',
+                record.report_file_name || '',
+                record.report_generated_at || '',
+                record.team_name || '',
+                record.team_leader || '',
+                record.quality_inspector || '',
+                record.quality_manager || '',
+                Number(record.reinspection_count || 0)
+            ]
+        );
+
+        for (const item of Array.isArray(items) ? items : []) {
+            await client.query(
+                `INSERT INTO component_qc_record_items (
+                    id, record_id, seq, item_name, design_value, tolerance_text, measured_value,
+                    verdict, defect_type, remark, created_at
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CURRENT_TIMESTAMP)`,
+                [
+                    item.id,
+                    record.id,
+                    Number(item.seq || 0),
+                    item.item_name || '',
+                    item.design_value || '',
+                    item.tolerance_text || '',
+                    item.measured_value || '',
+                    item.verdict || '',
+                    item.defect_type || '',
+                    item.remark || ''
+                ]
+            );
+        }
+    }),
+    getQcRecords: ({ projectId = null, componentId = null, isOutbound = null, keyword = '' } = {}) => {
+        const params = [];
+        const conditions = [];
+        if (projectId) {
+            params.push(projectId);
+            conditions.push(`r.project_id = $${params.length}`);
+        }
+        if (componentId) {
+            params.push(componentId);
+            conditions.push(`r.component_id = $${params.length}`);
+        }
+        if (isOutbound !== null && isOutbound !== undefined && isOutbound !== '') {
+            params.push(!!isOutbound);
+            conditions.push(`r.is_outbound = $${params.length}`);
+        }
+        if (keyword) {
+            params.push(`%${keyword}%`);
+            conditions.push(`(r.component_mark ILIKE $${params.length} OR p.name ILIKE $${params.length})`);
+        }
+        const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        return query(
+            `SELECT
+                r.*,
+                p.name AS project_name
+             FROM component_qc_records r
+             JOIN projects p ON p.id = r.project_id
+             ${where}
+             ORDER BY r.created_at DESC`,
+            params
+        );
+    },
+    getQcRecordById: (id) => get(
+        `SELECT
+            r.*,
+            p.name AS project_name
+         FROM component_qc_records r
+         JOIN projects p ON p.id = r.project_id
+         WHERE r.id = $1`,
+        [id]
+    ),
+    getQcRecordItemsByRecordId: (recordId) => query(
+        `SELECT *
+         FROM component_qc_record_items
+         WHERE record_id = $1
+         ORDER BY seq ASC, created_at ASC`,
+        [recordId]
+    ),
+    getDetectedComponents: ({ projectId = null, keyword = '' } = {}) => {
+        const params = [];
+        const conditions = [
+            `(
+                COALESCE(c.qc_locked, FALSE) = TRUE
+                OR COALESCE(c.qc_result, '') <> ''
+                OR COALESCE(c.qualified_at, '') <> ''
+                OR COALESCE(c.outbound_at, '') <> ''
+                OR COALESCE(c.reinspection_count, 0) > 0
+            )`
+        ];
+        if (projectId) {
+            params.push(projectId);
+            conditions.push(`c.project_id = $${params.length}`);
+        }
+        if (keyword) {
+            params.push(`%${keyword}%`);
+            conditions.push(`(c.component_mark ILIKE $${params.length} OR p.name ILIKE $${params.length})`);
+        }
+        return query(
+            `SELECT
+                c.id,
+                c.project_id,
+                p.name AS project_name,
+                c.component_mark,
+                c.status,
+                c.qc_result,
+                c.reinspection_count,
+                c.qualified_at,
+                c.outbound_at,
+                c.team_name,
+                c.team_leader,
+                c.quality_inspector,
+                c.quality_manager,
+                c.qc_locked,
+                c.updated_at,
+                c.created_at
+             FROM components c
+             JOIN projects p ON p.id = c.project_id
+             WHERE ${conditions.join(' AND ')}
+             ORDER BY c.updated_at DESC, c.created_at DESC`,
+            params
+        );
+    },
+    getLatestOutboundRecordByComponentId: (componentId) => get(
+        `SELECT *
+         FROM component_outbound_records
+         WHERE component_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [componentId]
+    ),
+    deleteReinspectionTasksByComponentId: (componentId) => run(
+        `DELETE FROM component_reinspection_tasks WHERE component_id = $1`,
+        [componentId]
     ),
     getReinspectionTasks: ({ projectId = null } = {}) => {
         const params = [];
@@ -571,6 +771,58 @@ const data = {
          ORDER BY created_at DESC`,
         [componentId]
     ),
+    completeReinspectionTasksByComponentId: (componentId) => run(
+        `UPDATE component_reinspection_tasks
+         SET status = '复检完成', updated_at = CURRENT_TIMESTAMP
+         WHERE component_id = $1 AND status = '待复检'`,
+        [componentId]
+    ),
+    getComponentsForDefectStatistics: ({ projectId = null } = {}) => {
+        const params = [];
+        let where = '';
+        if (projectId) {
+            params.push(projectId);
+            where = `WHERE project_id = $${params.length}`;
+        }
+        return query(
+            `SELECT
+                id,
+                project_id,
+                component_mark,
+                qc_result,
+                first_pass_qualified,
+                qualified_at,
+                outbound_at,
+                reinspection_count,
+                qc_locked
+             FROM components
+             ${where}
+             ORDER BY created_at DESC`,
+            params
+        );
+    },
+    getReinspectionTasksForDefectStatistics: ({ projectId = null } = {}) => {
+        const params = [];
+        let where = '';
+        if (projectId) {
+            params.push(projectId);
+            where = `WHERE project_id = $${params.length}`;
+        }
+        return query(
+            `SELECT
+                id,
+                project_id,
+                component_id,
+                reinspection_date,
+                inspection_date,
+                defect_types_json,
+                created_at
+             FROM component_reinspection_tasks
+             ${where}
+             ORDER BY created_at DESC`,
+            params
+        );
+    },
     updateComponent: (id, updates) => {
         const entries = Object.entries(updates || {}).filter(([key]) => key !== 'id');
         if (!entries.length) return Promise.resolve({ success: false, error: 'No fields to update' });

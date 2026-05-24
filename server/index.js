@@ -11,7 +11,11 @@ const { buildStableIfcComponentId, findStaleImportedComponentIds } = require('./
 const {
     normalizeQcStatus,
     computeQcActionState,
-    canOutboundWithPendingReinspection
+    canOutboundWithPendingReinspection,
+    summarizeDefectStatistics,
+    mapRowToDefectType,
+    buildQcRecordGroups,
+    buildQcArchiveFileMeta
 } = require('./qc-workflow');
 
 const app = express();
@@ -24,7 +28,8 @@ app.get('/health', (req, res) => {
 
 app.use(cors());
 app.use(compression());
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR);
@@ -37,6 +42,7 @@ const ensureDir = (dirPath) => {
 };
 
 const QC_TEMPLATE_DIR = path.resolve(__dirname, '..', '单个构件质检表');
+const QC_REPORT_DIR = path.resolve(__dirname, '..', 'storage', 'qc-reports');
 const IFC_UPLOAD_DIR = path.join(UPLOAD_DIR, 'ifc');
 const WASM_DIR = path.join(__dirname, '../public/static/js/wasm');
 const STEEL_QC_DIST_DIR = path.join(__dirname, '../dist-steel-qc');
@@ -48,6 +54,7 @@ const BANZU_DIR = path.join(__dirname, '..', 'banzu');
 
 ensureDir(IFC_UPLOAD_DIR);
 ensureDir(WASM_DIR);
+ensureDir(QC_REPORT_DIR);
 const IFC_PARSE_JOBS = new Map();
 const IFC_PARSE_JOB_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -696,6 +703,23 @@ const parseQcTemplate = (filePath) => {
         return idx;
     })();
 
+    const defectTypeSet = new Set([
+        '柱脚螺栓孔中心对柱轴线的距离',
+        '柱底板平面度',
+        '节点变形',
+        '节点尺寸（牛腿、连接板）',
+        '构件长度',
+        '扭曲旁弯',
+        '构件截面',
+        '构件垂直度',
+        '对接',
+        '孔距',
+        '拱高',
+        '起拱',
+        '定位尺寸',
+        '板变形'
+    ]);
+
     for (let i = headerRowIndex + 1; i < normalized.length; i++) {
         const row = normalized[i] || [];
         const seq = row[seqCol];
@@ -711,12 +735,14 @@ const parseQcTemplate = (filePath) => {
         const isSeq = /^[0-9]+$/.test(seqText);
 
         if (isSeq) {
+            const defectType = defectTypeSet.has(safeCellText(remarkText)) ? safeCellText(remarkText) : '';
             current = {
                 seq: Number(seqText),
                 name: safeCellText(itemName),
                 designValue: safeCellText(designValue),
                 toleranceTexts: [],
-                remark: safeCellText(remarkText)
+                remark: defectType ? '' : safeCellText(remarkText),
+                defectType
             };
             if (safeCellText(toleranceText) !== '') {
                 current.toleranceTexts.push(safeCellText(toleranceText));
@@ -737,7 +763,9 @@ const parseQcTemplate = (filePath) => {
         if (!current.designValue && safeCellText(designValue) !== '') {
             current.designValue = safeCellText(designValue);
         }
-        if (!current.remark && safeCellText(remarkText) !== '') {
+        if (!current.defectType && defectTypeSet.has(safeCellText(remarkText))) {
+            current.defectType = safeCellText(remarkText);
+        } else if (!current.remark && safeCellText(remarkText) !== '') {
             current.remark = safeCellText(remarkText);
         }
     }
@@ -763,6 +791,7 @@ const loadQcTemplates = () => {
 
         const files = fs
             .readdirSync(QC_TEMPLATE_DIR)
+            .filter((f) => !f.startsWith('~$'))
             .filter((f) => f.toLowerCase().endsWith('.xlsx'))
             .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
 
@@ -1412,14 +1441,48 @@ app.get('/api/today-plan', async (req, res) => {
     try {
         const today = getTodayStr();
         const { startDate, endDate, projectId } = req.query;
-        const rowsRes = await dbApi.data.getTodayPlanRows({ startDate, endDate, projectId, today });
+        const normalizePlanStatus = (status) => normalizeComponentStatus(status || '待检测');
+        const isCompletedStatus = (status) => {
+            const normalized = normalizePlanStatus(status);
+            return normalized === '已完成' || normalized === '已出库';
+        };
+
+        let rowsRes = await dbApi.data.getTodayPlanRows({ startDate, endDate, projectId, today });
         if (!rowsRes.success) {
             console.error('GET /api/today-plan query failed:', rowsRes.error || 'unknown error');
             return res.status(500).json({ success: false, message: rowsRes.error || '获取今日计划失败' });
         }
+
+        let resolvedPlanDate = today;
+        let sourceRows = Array.isArray(rowsRes.data) ? rowsRes.data : [];
+
+        if (!startDate && !endDate) {
+            const todayPendingRows = sourceRows.filter((row) => !isCompletedStatus(row.status));
+            if (todayPendingRows.length === 0) {
+                const futureRowsRes = await dbApi.data.getTodayPlanRows({
+                    startDate: today,
+                    endDate: '9999-12-31',
+                    projectId
+                });
+                if (!futureRowsRes.success) {
+                    console.error('GET /api/today-plan future query failed:', futureRowsRes.error || 'unknown error');
+                    return res.status(500).json({ success: false, message: futureRowsRes.error || '获取后续计划失败' });
+                }
+                const futureRows = Array.isArray(futureRowsRes.data) ? futureRowsRes.data : [];
+                const futurePendingRows = futureRows
+                    .filter((row) => !isCompletedStatus(row.status) && row.plan_date)
+                    .sort((a, b) => String(a.plan_date || '').localeCompare(String(b.plan_date || '')));
+
+                if (futurePendingRows.length > 0) {
+                    resolvedPlanDate = String(futurePendingRows[0].plan_date || today);
+                    sourceRows = futureRows.filter((row) => String(row.plan_date || '') === resolvedPlanDate);
+                }
+            }
+        }
+
         const activeRes = await dbApi.data.getActiveProject();
         const activeId = activeRes.success && activeRes.data ? activeRes.data.id : null;
-        const planItems = (rowsRes.data || []).map((row) => ({
+        const planItems = sourceRows.map((row) => ({
             project: row.project_name,
             projectId: row.project_id,
             componentId: row.component_id,
@@ -1445,7 +1508,7 @@ app.get('/api/today-plan', async (req, res) => {
             ifcGlobalId: row.ifc_global_id || '',
             teamId: row.team_id || ''
         }));
-        res.json({ success: true, data: planItems, activeProjectId: activeId });
+        res.json({ success: true, data: planItems, activeProjectId: activeId, resolvedPlanDate });
     } catch (error) {
         console.error('Error in GET /api/today-plan:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -1503,6 +1566,65 @@ app.get('/api/qc/reinspection-tasks', async (req, res) => {
     }
 });
 
+app.get('/api/qc/defect-statistics', async (req, res) => {
+    try {
+        const activeRes = await dbApi.data.getActiveProject();
+        if (!activeRes.success) {
+            return res.status(500).json({ success: false, message: activeRes.error || '获取当前项目失败' });
+        }
+        const activeProjectId = activeRes.data && activeRes.data.id ? String(activeRes.data.id) : '';
+        const requestedProjectId = req.query.projectId ? String(req.query.projectId) : '';
+        const targetProjectId = requestedProjectId || activeProjectId;
+
+        const [
+            projectComponentsRes,
+            projectTasksRes,
+            overallComponentsRes,
+            overallTasksRes
+        ] = await Promise.all([
+            dbApi.data.getComponentsForDefectStatistics({ projectId: targetProjectId || null }),
+            dbApi.data.getReinspectionTasksForDefectStatistics({ projectId: targetProjectId || null }),
+            dbApi.data.getComponentsForDefectStatistics({}),
+            dbApi.data.getReinspectionTasksForDefectStatistics({})
+        ]);
+
+        if (!projectComponentsRes.success) {
+            return res.status(500).json({ success: false, message: projectComponentsRes.error || '获取项目构件统计数据失败' });
+        }
+        if (!projectTasksRes.success) {
+            return res.status(500).json({ success: false, message: projectTasksRes.error || '获取项目缺陷统计数据失败' });
+        }
+        if (!overallComponentsRes.success) {
+            return res.status(500).json({ success: false, message: overallComponentsRes.error || '获取总项目构件统计数据失败' });
+        }
+        if (!overallTasksRes.success) {
+            return res.status(500).json({ success: false, message: overallTasksRes.error || '获取总项目缺陷统计数据失败' });
+        }
+
+        const project = summarizeDefectStatistics({
+            components: projectComponentsRes.data || [],
+            reinspectionTasks: projectTasksRes.data || []
+        });
+        const overall = summarizeDefectStatistics({
+            components: overallComponentsRes.data || [],
+            reinspectionTasks: overallTasksRes.data || []
+        });
+
+        res.json({
+            success: true,
+            data: {
+                activeProjectId,
+                projectId: targetProjectId,
+                project,
+                overall
+            }
+        });
+    } catch (error) {
+        console.error('GET /api/qc/defect-statistics', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 app.post('/api/qc/reinspection', requireRole(['admin', 'operator']), async (req, res) => {
     try {
         const { projectId, componentId, reinspectionDate, rows, inspectionDate } = req.body || {};
@@ -1555,7 +1677,7 @@ app.post('/api/qc/reinspection', requireRole(['admin', 'operator']), async (req,
 
 app.post('/api/qc/outbound', requireRole(['admin', 'operator']), async (req, res) => {
     try {
-        const { projectId, componentId, rows, inspectionDate, reportSnapshot } = req.body || {};
+        const { projectId, componentId, rows, inspectionDate, reportSnapshot, pdfBase64 } = req.body || {};
         if (!projectId || !componentId) {
             return res.status(400).json({ success: false, message: '缺少项目或构件信息' });
         }
@@ -1574,11 +1696,52 @@ app.post('/api/qc/outbound', requireRole(['admin', 'operator']), async (req, res
             return res.status(500).json({ success: false, message: tasksRes.error || '查询复检任务失败' });
         }
         if (!canOutboundWithPendingReinspection(tasksRes.data || [])) {
-            return res.status(400).json({ success: false, message: '该构件仍有待复检任务，不能直接出库' });
+            if (typeof dbApi.data.completeReinspectionTasksByComponentId !== 'function') {
+                return res.status(400).json({ success: false, message: '该构件仍有待复检任务，不能直接出库' });
+            }
+            const completeTasksRes = await dbApi.data.completeReinspectionTasksByComponentId(componentId);
+            if (!completeTasksRes.success) {
+                return res.status(500).json({ success: false, message: completeTasksRes.error || '复检任务结案失败' });
+            }
         }
         const component = componentRes.data;
         const outboundDate = getTodayStr();
+        const qcRecordId = genQcRecordId();
         const outboundId = `outbound-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const archiveRes = writeQcPdfArchive({
+            projectId,
+            componentMark: component.component_mark || component.name || componentId,
+            recordId: qcRecordId,
+            inspectionDate: inspectionDate || outboundDate,
+            pdfBase64
+        });
+        if (!archiveRes.success) {
+            return res.status(400).json({ success: false, message: archiveRes.error || '归档 PDF 失败' });
+        }
+        const qcRecordRes = await dbApi.data.createQcRecordWithItems({
+            id: qcRecordId,
+            project_id: projectId,
+            component_id: componentId,
+            component_mark: component.component_mark || component.name || '',
+            template_id: reportSnapshot && reportSnapshot.templateId ? reportSnapshot.templateId : '',
+            template_title: reportSnapshot && reportSnapshot.templateTitle ? reportSnapshot.templateTitle : '',
+            inspection_date: inspectionDate || outboundDate,
+            qc_result: '合格',
+            is_outbound: true,
+            outbound_date: outboundDate,
+            report_snapshot_json: JSON.stringify(reportSnapshot || {}),
+            report_file_path: archiveRes.relativePath,
+            report_file_name: archiveRes.fileName,
+            report_generated_at: archiveRes.generatedAt,
+            team_name: component.team_name || '',
+            team_leader: component.team_leader || '',
+            quality_inspector: component.quality_inspector || '',
+            quality_manager: component.quality_manager || '',
+            reinspection_count: Number(component.reinspection_count || 0)
+        }, buildQcRecordItems(rows || [], qcRecordId));
+        if (!qcRecordRes.success) {
+            return res.status(500).json({ success: false, message: qcRecordRes.error || '保存检测记录失败' });
+        }
         const createRes = await dbApi.data.createOutboundRecord({
             id: outboundId,
             project_id: projectId,
@@ -1591,6 +1754,9 @@ app.post('/api/qc/outbound', requireRole(['admin', 'operator']), async (req, res
             inspection_date: inspectionDate || outboundDate,
             outbound_date: outboundDate,
             report_snapshot_json: JSON.stringify(reportSnapshot || {}),
+            report_file_path: archiveRes.relativePath,
+            report_file_name: archiveRes.fileName,
+            report_generated_at: archiveRes.generatedAt,
             status: '已出库'
         });
         if (!createRes.success) {
@@ -1611,7 +1777,177 @@ app.post('/api/qc/outbound', requireRole(['admin', 'operator']), async (req, res
         if (!refreshRes.success) {
             return res.status(500).json({ success: false, message: refreshRes.error || '统计更新失败' });
         }
-        res.json({ success: true, id: outboundId, outboundDate, inspectionDate: inspectionDate || outboundDate });
+        res.json({
+            success: true,
+            id: outboundId,
+            recordId: qcRecordId,
+            outboundDate,
+            inspectionDate: inspectionDate || outboundDate,
+            reportFileName: archiveRes.fileName
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/qc/records', async (req, res) => {
+    try {
+        const { projectId = '', keyword = '' } = req.query || {};
+        const [componentsRes, recordsRes, tasksRes] = await Promise.all([
+            dbApi.data.getDetectedComponents({ projectId, keyword }),
+            dbApi.data.getQcRecords({ projectId, keyword }),
+            dbApi.data.getReinspectionTasks({ projectId: projectId || null })
+        ]);
+        if (!componentsRes.success) {
+            return res.status(500).json({ success: false, message: componentsRes.error || '查询已检测构件失败' });
+        }
+        if (!recordsRes.success) {
+            return res.status(500).json({ success: false, message: recordsRes.error || '查询检测记录失败' });
+        }
+        if (!tasksRes.success) {
+            return res.status(500).json({ success: false, message: tasksRes.error || '查询复检记录失败' });
+        }
+
+        const recordGroups = buildQcRecordGroups(recordsRes.data || []);
+        const recordGroupMap = new Map();
+        [...(recordGroups.pending || []), ...(recordGroups.outbound || [])].forEach((group) => {
+            if (group && group.componentId) recordGroupMap.set(String(group.componentId), group);
+        });
+        const tasksByComponentId = new Map();
+        for (const task of (tasksRes.data || [])) {
+            const componentId = String(task.component_id || '').trim();
+            if (!componentId) continue;
+            if (!tasksByComponentId.has(componentId)) tasksByComponentId.set(componentId, []);
+            tasksByComponentId.get(componentId).push(task);
+        }
+
+        const pending = [];
+        const outbound = [];
+        for (const component of (componentsRes.data || [])) {
+            const componentId = String(component.id || '').trim();
+            const status = normalizeComponentStatus(component.status);
+            const group = recordGroupMap.get(componentId) || null;
+            const relatedTasks = tasksByComponentId.get(componentId) || [];
+            const latestOutboundRes = status === '已出库' && typeof dbApi.data.getLatestOutboundRecordByComponentId === 'function'
+                ? await dbApi.data.getLatestOutboundRecordByComponentId(componentId)
+                : { success: true, data: null };
+            const latestOutbound = latestOutboundRes && latestOutboundRes.success ? latestOutboundRes.data : null;
+            const entry = {
+                projectId: component.project_id || '',
+                projectName: component.project_name || '',
+                componentId,
+                componentMark: component.component_mark || '',
+                latestRecordId: group ? (group.latestRecordId || '') : '',
+                latestInspectionDate: group
+                    ? (group.latestInspectionDate || '')
+                    : (component.qualified_at || (relatedTasks[0] && relatedTasks[0].inspection_date) || ''),
+                latestOutboundDate: group
+                    ? (group.latestOutboundDate || '')
+                    : ((latestOutbound && latestOutbound.outbound_date) || component.outbound_at || ''),
+                latestResult: group
+                    ? (group.latestResult || '')
+                    : (component.qc_result || (status === '已出库' ? '合格' : '不合格')),
+                reportFileName: group
+                    ? (group.reportFileName || '')
+                    : ((latestOutbound && latestOutbound.report_file_name) || ''),
+                reportFilePath: group
+                    ? (group.reportFilePath || '')
+                    : ((latestOutbound && latestOutbound.report_file_path) || ''),
+                recordCount: group ? Number(group.recordCount || 0) : (Number(component.reinspection_count || 0) > 0 ? 1 : 0),
+                hasReinspectionHistory: Number(component.reinspection_count || 0) > 0,
+                statusLabel: status === '已出库' ? '已出库' : '已检测未出库',
+                records: group ? (group.records || []) : []
+            };
+            if (status === '已出库') outbound.push(entry);
+            else pending.push(entry);
+        }
+
+        res.json({ success: true, data: { pending, outbound } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/qc/records/:id', async (req, res) => {
+    try {
+        const recordRes = await dbApi.data.getQcRecordById(req.params.id);
+        if (!recordRes.success) {
+            return res.status(500).json({ success: false, message: recordRes.error || '查询检测记录失败' });
+        }
+        if (!recordRes.data) {
+            return res.status(404).json({ success: false, message: '检测记录不存在' });
+        }
+        const itemsRes = await dbApi.data.getQcRecordItemsByRecordId(req.params.id);
+        if (!itemsRes.success) {
+            return res.status(500).json({ success: false, message: itemsRes.error || '查询检测明细失败' });
+        }
+        res.json({ success: true, data: { record: recordRes.data, items: itemsRes.data || [] } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/qc/records/:id/pdf', async (req, res) => {
+    try {
+        const recordRes = await dbApi.data.getQcRecordById(req.params.id);
+        if (!recordRes.success) {
+            return res.status(500).json({ success: false, message: recordRes.error || '查询检测记录失败' });
+        }
+        if (!recordRes.data) {
+            return res.status(404).json({ success: false, message: '检测记录不存在' });
+        }
+        const relativePath = String(recordRes.data.report_file_path || '').trim();
+        if (!relativePath) {
+            return res.status(404).json({ success: false, message: '该记录暂无归档 PDF' });
+        }
+        const absolutePath = path.resolve(__dirname, '..', relativePath);
+        if (!fs.existsSync(absolutePath)) {
+            return res.status(404).json({ success: false, message: '归档 PDF 文件不存在' });
+        }
+        const downloadName = recordRes.data.report_file_name || path.basename(absolutePath);
+        res.download(absolutePath, downloadName);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/qc/debug/reset-component', requireRole(['admin', 'operator']), async (req, res) => {
+    try {
+        const { componentMark } = req.body || {};
+        if (!componentMark) {
+            return res.status(400).json({ success: false, message: '缺少构件编号' });
+        }
+        const componentRes = await dbApi.data.getComponentByProjectAndMark(
+            (await dbApi.data.getActiveProject()).data.id,
+            componentMark
+        );
+        if (!componentRes.success || !componentRes.data) {
+            return res.status(404).json({ success: false, message: '构件不存在' });
+        }
+        const component = componentRes.data;
+        const deleteRes = typeof dbApi.data.deleteReinspectionTasksByComponentId === 'function'
+            ? await dbApi.data.deleteReinspectionTasksByComponentId(component.id)
+            : { success: true };
+        if (!deleteRes.success) {
+            return res.status(500).json({ success: false, message: deleteRes.error || '清理复检任务失败' });
+        }
+        const updateRes = await dbApi.data.updateComponent(component.id, {
+            status: '待检测',
+            qc_result: '',
+            reinspection_count: 0,
+            qc_locked: false,
+            qualified_at: '',
+            outbound_at: '',
+            first_pass_qualified: false
+        });
+        if (!updateRes.success) {
+            return res.status(500).json({ success: false, message: updateRes.error || '恢复构件状态失败' });
+        }
+        const refreshRes = await refreshQualitySummaries(component.project_id);
+        if (!refreshRes.success) {
+            return res.status(500).json({ success: false, message: refreshRes.error || '统计更新失败' });
+        }
+        res.json({ success: true, componentId: component.id, componentMark });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -1850,8 +2186,45 @@ function getTomorrowStr() {
     d.setDate(d.getDate() + 1);
     return d.toISOString().split('T')[0];
 }
+function genQcRecordId() { return `qc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
 function genId() { return 'p' + Date.now(); }
 function genCompId() { return `GJ-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
+
+function buildQcRecordItems(rows = [], recordId = '') {
+    return (Array.isArray(rows) ? rows : []).map((row, index) => ({
+        id: `${recordId}-item-${index + 1}`,
+        seq: Number(row && row.seq != null ? row.seq : index + 1),
+        item_name: row && row.itemName ? String(row.itemName) : '',
+        design_value: row && row.designValue != null ? String(row.designValue) : '',
+        tolerance_text: row && row.toleranceText != null ? String(row.toleranceText) : '',
+        measured_value: row && row.measuredValue != null ? String(row.measuredValue) : '',
+        verdict: row && row.verdict ? String(row.verdict) : '',
+        defect_type: mapRowToDefectType({
+            itemName: row && row.itemName ? String(row.itemName) : ''
+        }),
+        remark: row && row.remark ? String(row.remark) : ''
+    }));
+}
+
+function writeQcPdfArchive({ projectId, componentMark, recordId, inspectionDate, pdfBase64, pdfBuffer }) {
+    if (!pdfBuffer && !pdfBase64) return { success: false, error: '缺少 PDF 内容' };
+    const meta = buildQcArchiveFileMeta({ projectId, componentMark, recordId, inspectionDate });
+    const absoluteDir = path.resolve(__dirname, '..', meta.directoryPath);
+    ensureDir(absoluteDir);
+    const absolutePath = path.join(absoluteDir, meta.fileName);
+    if (pdfBuffer) {
+        fs.writeFileSync(absolutePath, pdfBuffer);
+    } else {
+        const base64Data = String(pdfBase64).replace(/^data:application\/pdf;base64,/, '');
+        fs.writeFileSync(absolutePath, Buffer.from(base64Data, 'base64'));
+    }
+    return {
+        success: true,
+        fileName: meta.fileName,
+        relativePath: meta.relativePath,
+        generatedAt: new Date().toISOString()
+    };
+}
 
 function mapDbComponentToApi(component) {
     if (!component) return null;

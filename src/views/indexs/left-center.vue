@@ -93,7 +93,7 @@ export default {
 .inspection_images_wrap {
   width: 100%;
   height: 100%;
-  padding: 4px 6px 6px;
+  padding: 2px 4px 4px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -102,7 +102,7 @@ export default {
   .images_container {
     flex: 1;
     display: flex;
-    gap: 8px;
+    gap: 6px;
     overflow: hidden;
     flex-direction: row;
 

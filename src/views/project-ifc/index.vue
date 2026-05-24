@@ -104,6 +104,7 @@
 <script>
 import AdvancedIfcViewer from '@/components/AdvancedIfcViewer.vue'
 import { getAuthHeaders } from '@/utils'
+import { buildTodayPlanItemsFromSelection } from './project-plan-sync.mjs'
 
 const PIFC_PRESETS_KEY = 'pifc_assign_presets_v1'
 
@@ -577,6 +578,23 @@ export default {
       if (this.assignForm.status) body.status = this.assignForm.status
       return body
     },
+    buildTodayPlanSyncPayload(project) {
+      return buildTodayPlanItemsFromSelection(project, this.listSelectedRows)
+        .filter(item => item.planDate)
+    },
+    async syncTodayPlan(project) {
+      const planItems = this.buildTodayPlanSyncPayload(project)
+      if (!planItems.length) return
+      const res = await fetch('/api/today-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ planItems })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data || !data.success) {
+        throw new Error((data && data.message) || '同步今日计划失败')
+      }
+    },
     async applyAssignForm() {
       if (!this.currentProject || !this.currentProject.id) return
       if (!this.listSelectedRows.length) {
@@ -609,6 +627,7 @@ export default {
           throw new Error((data && data.message) || '保存失败')
         }
         this.currentProject = data.project
+        await this.syncTodayPlan(data.project)
         this.emitProjectUpdated(data.project)
         this.$Message && this.$Message.success(`已更新 ${this.listSelectedRows.length} 个构件`)
       } catch (e) {

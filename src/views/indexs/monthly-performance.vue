@@ -89,9 +89,9 @@
       <!-- 中间分割线 -->
       <div class="divider"></div>
 
-      <!-- 右侧：生产排名 -->
+      <!-- 右侧：生产合格率排名 -->
       <div class="ranking_section">
-        <div class="section_title">本月生产排名</div>
+        <div class="section_title">本月生产合格率排名</div>
         <div class="ranking_list">
           <div class="ranking_item" v-for="(item, index) in rankingList" :key="index" @click="openEditModal('ranking', index)" :style="{ cursor: canEditRanking ? 'pointer' : 'default' }">
             <div class="rank_num" :class="'top-' + (index + 1)">{{ index + 1 }}</div>

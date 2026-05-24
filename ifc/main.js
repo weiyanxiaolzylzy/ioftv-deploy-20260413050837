@@ -183,6 +183,7 @@ let lightElementPanelMode = false;
 let minimalMode = false;
 let databaseIndexMode = false;
 let currentProjectId = '';
+let highlightedExpressIDs = new Set();
 /** 当前是否已隐藏整模（用于 clearSelection / 加载新模时恢复） */
 let isolateHideBaseModel = false;
 
@@ -204,6 +205,14 @@ window.addEventListener('message', async (event) => {
             const eid = Number(data.expressID);
             if (!Number.isFinite(eid)) break;
             const isolateOnly = data.isolateOnly === true || isolateComponentView;
+            console.log('[IFC iframe] received select-element', {
+                expressID: eid,
+                componentMark: (data.componentMark || '').trim(),
+                focus: data.focus !== false,
+                isolateOnly,
+                currentModelID,
+                elementIndexSize: elementIndex.length
+            });
             pendingSelectFromParent = {
                 expressID: eid,
                 componentMark: (data.componentMark || '').trim(),
@@ -215,7 +224,14 @@ window.addEventListener('message', async (event) => {
         }
         case 'highlight': {
             const ids = Array.isArray(data.ids) ? data.ids.map(Number) : [];
-            ids.forEach(expressID => highlightSelectedInGreen(expressID));
+            highlightedExpressIDs = new Set(ids.filter((id) => Number.isFinite(id) && id > 0));
+            console.log('[IFC iframe] received highlight', {
+                ids,
+                highlightedExpressIDs: Array.from(highlightedExpressIDs),
+                currentModelID,
+                minimalMode
+            });
+            applyProjectMinimalHighlighting();
             break;
         }
         case 'multi-select-mode': {
@@ -267,6 +283,12 @@ async function tryApplyPendingSelectFromParent() {
     if (!pendingSelectFromParent || currentModelID == null) return;
     const { expressID, componentMark, focus, isolateOnly } = pendingSelectFromParent;
     let row = elementIndex.find((r) => r.expressID === expressID);
+    let matchedBy = row ? 'expressID' : '';
+    if (!row && componentMark) {
+        const normalizedMark = String(componentMark).trim().toLowerCase();
+        row = elementIndex.find((r) => String(r.componentMark || '').trim().toLowerCase() === normalizedMark);
+        if (row) matchedBy = 'componentMark';
+    }
     if (!row && lightElementPanelMode) {
         row = {
             expressID,
@@ -275,17 +297,40 @@ async function tryApplyPendingSelectFromParent() {
             componentMark: componentMark || '',
             type: ''
         };
+        matchedBy = 'lightElementPanelFallback';
     } else if (row && componentMark && !row.componentMark) {
         row.componentMark = componentMark;
     }
-    if (!row) return;
+    if (!row) {
+        console.warn('[IFC iframe] failed to resolve select-element target', {
+            expressID,
+            componentMark,
+            currentModelID,
+            elementIndexSize: elementIndex.length,
+            sampleMarks: elementIndex.slice(0, 10).map((r) => ({
+                expressID: r.expressID,
+                componentMark: r.componentMark || '',
+                name: r.name || ''
+            }))
+        });
+        return;
+    }
+    const targetExpressID = Number(row.expressID);
+    if (!Number.isFinite(targetExpressID)) return;
+    console.log('[IFC iframe] resolved select-element target', {
+        requestedExpressID: expressID,
+        requestedComponentMark: componentMark,
+        targetExpressID,
+        targetComponentMark: row.componentMark || '',
+        matchedBy
+    });
     pendingSelectFromParent = null;
     /* 构件模型区：用「小窗」逻辑只显示单构件 mesh，不用整模高亮 */
     if (document.body.classList.contains('embed-element-panel') && row) {
         await showElementInSmallViewer(row);
         return;
     }
-    await selectAndShowElement(currentModelID, expressID, focus, {
+    await selectAndShowElement(currentModelID, targetExpressID, focus, {
         silent: true,
         isolateOnly: !!isolateOnly
     });
@@ -462,6 +507,44 @@ function resetAllToGray() {
     scene.traverse((obj) => {
         if (obj.isMesh) setMeshColor(obj, GRAY_COLOR);
     });
+}
+
+function colorExpressIDs(expressIDs, color) {
+    if (!(expressIDs instanceof Set) || expressIDs.size === 0) return;
+    const scene = getScene();
+    if (!scene) return;
+    scene.traverse((obj) => {
+        if (!obj.isMesh) return;
+        const ids = getExpressIDsFromMesh(obj);
+        if (ids.size === 0) return;
+        for (const id of ids) {
+            if (expressIDs.has(Number(id))) {
+                setMeshColor(obj, color);
+                break;
+            }
+        }
+    });
+}
+
+function applyProjectMinimalHighlighting() {
+    console.log('[IFC iframe] applyProjectMinimalHighlighting', {
+        minimalMode,
+        currentModelID,
+        highlightedExpressIDs: Array.from(highlightedExpressIDs),
+        selectedExpressID
+    });
+    if (!minimalMode || currentModelID == null) return;
+    restoreIfcBaseModelsIfIsolated();
+    removeGreenOverlay();
+    clearMultiSelectMeshes();
+    resetAllToGray();
+    if (highlightedExpressIDs.size > 0) {
+        for (const expressID of highlightedExpressIDs) {
+            highlightSelectedInGreen(Number(expressID));
+        }
+    } else if (Number.isFinite(Number(selectedExpressID)) && Number(selectedExpressID) > 0) {
+        highlightSelectedInGreen(Number(selectedExpressID));
+    }
 }
 
 function getExpressIDsFromMesh(obj) {
@@ -963,6 +1046,7 @@ input.addEventListener('change', async (event) => {
     // 标记 mesh 与 expressID 的关联（延迟确保模型完全渲染）
     setTimeout(() => {
         grayOutModel(currentModelID);
+        applyProjectMinimalHighlighting();
     }, 500);
 });
 
@@ -1735,6 +1819,15 @@ async function selectAndShowElement(modelID, expressID, focusSelection, opts = {
     removeGreenOverlay();
     clearMultiSelectMeshes();
 
+    if (minimalMode && !isolateOnly) {
+        resetAllToGray();
+        if (highlightedExpressIDs.size > 0) {
+            for (const id of highlightedExpressIDs) {
+                highlightSelectedInGreen(Number(id));
+            }
+        }
+    }
+
     // 从合并 mesh 中提取 expressID 对应的三角面，构建绿色 mesh
     const newMesh = buildGreenMesh(modelID, expressID);
     if (newMesh) {
@@ -1761,6 +1854,7 @@ async function selectAndShowElement(modelID, expressID, focusSelection, opts = {
 
     if (focusSelection) {
         await safeViewItem(modelID, expressID);
+        scheduleMainViewerRefocus(modelID, expressID);
     }
     await showElementProperties(modelID, expressID);
 
@@ -1874,6 +1968,9 @@ function clearSelection() {
     updateSelectedInList();
     viewer.IFC.selector.unpickIfcItems();
     propsContainer.innerHTML = '<p class="placeholder">双击构件以查看属性</p>';
+    if (minimalMode) {
+        applyProjectMinimalHighlighting();
+    }
 }
 
 // 从合并 mesh 中提取属于指定 expressID 的三角面，返回独立绿色 Mesh
@@ -1988,7 +2085,7 @@ function collectFaceVertexIndices(geo, expressIDs) {
 
 // 将模型整体设为灰色
 function grayOutModel(modelID) {
-    if (!modelID) return;
+    if (modelID == null) return;
     const model = viewer.context.items.ifcModels.find(m => m.modelID === modelID);
     if (!model) return;
     if (!model.material) return;
@@ -1996,6 +2093,10 @@ function grayOutModel(modelID) {
     const mats = Array.isArray(model.material) ? model.material : [model.material];
     mats.forEach(mat => {
         if (mat && mat.color) mat.color.set(0x888888);
+    });
+    console.log('[IFC iframe] grayOutModel applied', {
+        modelID,
+        materialCount: mats.length
     });
 }
 
@@ -2020,9 +2121,93 @@ function isViewableExpressID(expressID) {
     return elementIndex.some((row) => row.expressID === expressID);
 }
 
+function frameMeshInMainViewer(mesh) {
+    if (!mesh || !viewer || !viewer.context) return false;
+    mesh.updateMatrixWorld(true);
+
+    const ctx = viewer.context;
+    const ifcCam = ctx.ifcCamera;
+    const camera = ifcCam?.perspectiveCamera;
+    if (!camera) return false;
+
+    const box = new THREE.Box3().setFromObject(mesh);
+    if (box.isEmpty()) return false;
+
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
+    if (!Number.isFinite(maxDim) || maxDim <= 0) return false;
+
+    const padding = 1.52;
+    const fov = camera.fov * (Math.PI / 180);
+    let distance = (maxDim / 2) / Math.tan(fov / 2) * padding;
+    distance = Math.max(distance, maxDim * 0.95);
+    const offset = new THREE.Vector3(1, 0.72, 1).normalize().multiplyScalar(distance);
+    const cameraPosition = center.clone().add(offset);
+
+    camera.position.copy(cameraPosition);
+    camera.lookAt(center);
+    camera.updateProjectionMatrix();
+
+    try {
+        if (ifcCam.controls && typeof ifcCam.controls.setLookAt === 'function') {
+            ifcCam.controls.setLookAt(
+                cameraPosition.x, cameraPosition.y, cameraPosition.z,
+                center.x, center.y, center.z,
+                true
+            );
+        } else if (ifcCam.controls && typeof ifcCam.controls.update === 'function') {
+            ifcCam.controls.update();
+        }
+    } catch (error) {
+        console.warn('[IFC iframe] main viewer setLookAt failed', error);
+    }
+
+    ctx.resize?.();
+    return true;
+}
+
+function scheduleMainViewerRefocus(modelID, expressID) {
+    [0, 120, 360, 900, 1500].forEach((ms) => {
+        setTimeout(() => {
+            safeViewItem(modelID, expressID).catch(() => {});
+        }, ms);
+    });
+}
+
 async function safeViewItem(modelID, expressID) {
     const ifcAPI = viewer.IFC?.loader?.ifcManager?.ifcAPI;
     if (!ifcAPI) return;
+
+    if (greenOverlayMesh) {
+        greenOverlayMesh.updateMatrixWorld(true);
+        const overlayBox = new THREE.Box3().setFromObject(greenOverlayMesh);
+        if (!overlayBox.isEmpty()) {
+            const overlaySize = new THREE.Vector3();
+            overlayBox.getSize(overlaySize);
+            console.log('[IFC iframe] focus using greenOverlayMesh', {
+                expressID,
+                overlaySize: {
+                    x: overlaySize.x,
+                    y: overlaySize.y,
+                    z: overlaySize.z
+                }
+            });
+            if ([overlaySize.x, overlaySize.y, overlaySize.z].every(Number.isFinite) && overlaySize.lengthSq() > 0) {
+                if (frameMeshInMainViewer(greenOverlayMesh)) {
+                    return;
+                }
+                try {
+                    await viewer.context.ifcCamera.targetItem(greenOverlayMesh);
+                    return;
+                } catch (error) {
+                    console.warn('[IFC iframe] target green overlay failed after manual frame fallback', error);
+                }
+            }
+        }
+    }
 
     try {
         const props = await viewer.IFC.getProperties(modelID, expressID, false, false);
@@ -2050,9 +2235,14 @@ async function safeViewItem(modelID, expressID) {
             return;
         }
         const representation = unwrapIfcValue(line?.Representation);
-        if (representation == null) return;
+        if (representation == null) {
+            console.warn('[IFC iframe] line has no direct representation, skip line-based focus fallback', {
+                expressID,
+                typeName
+            });
+        }
     } catch {
-        return;
+        console.warn('[IFC iframe] line-based focus fallback failed', { expressID });
     }
 
     const selection = viewer.IFC?.selector?.selection;
@@ -2074,8 +2264,11 @@ async function safeViewItem(modelID, expressID) {
     if (![size.x, size.y, size.z].every(Number.isFinite)) return;
     if (size.lengthSq() === 0) return;
 
+    if (frameMeshInMainViewer(last)) return;
+
     try {
         await viewer.context.ifcCamera.targetItem(last);
+        return;
     } catch {}
 }
 

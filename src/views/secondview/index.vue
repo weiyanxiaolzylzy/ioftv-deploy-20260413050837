@@ -42,6 +42,9 @@
         <div class="nav-item" :class="{ active: currentTab === 'defects' }" @click="currentTab = 'defects'">
           <span>缺陷统计</span>
         </div>
+        <div class="nav-item" :class="{ active: currentTab === 'detected' }" @click="currentTab = 'detected'">
+          <span>已检测构件</span>
+        </div>
       </div>
 
       <div class="body-wrapper">
@@ -56,7 +59,9 @@
           <!-- 结果界面 -->
           <results-view v-if="currentTab === 'results'" />
 
-          <results-view v-if="currentTab === 'defects'" defect-mode />
+          <defect-statistics-view v-if="currentTab === 'defects'" />
+
+          <detected-components-view v-if="currentTab === 'detected'" />
         </div>
       </div>
 
@@ -68,6 +73,8 @@
 import WorkspaceView from './workspace-view.vue'
 import ParamsView from './params-view.vue'
 import ResultsView from './results-view.vue'
+import DefectStatisticsView from './defect-statistics-view.vue'
+import DetectedComponentsView from './detected-components-view.vue'
 import ScaleScreen from "@/components/scale-screen/scale-screen.vue";
 import { formatTime } from "../../utils/index.js";
 import { getAuthHeaders, canEditFeature } from '@/utils'
@@ -78,6 +85,8 @@ export default {
     WorkspaceView,
     ParamsView,
     ResultsView,
+    DefectStatisticsView,
+    DetectedComponentsView,
     ScaleScreen
   },
   data() {
@@ -156,8 +165,8 @@ export default {
   top: 25px;
   font-size: 16px;
   cursor: pointer;
-  color: #00d4ff;
-  text-shadow: 0 0 5px rgba(0, 212, 255, 0.5);
+  color: #8fe8ff;
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.65);
   display: flex;
   align-items: center;
   z-index: 100;
@@ -174,7 +183,9 @@ export default {
 .second-view-container {
   width: 1920px;
   height: 1080px;
-  background: #051020;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(72, 196, 255, 0.18) 0%, rgba(72, 196, 255, 0.04) 22%, transparent 52%),
+    linear-gradient(180deg, #0c264c 0%, #0d2d59 32%, #0a2448 68%, #091c39 100%);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -190,7 +201,18 @@ export default {
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(circle at 50% 50%, rgba(0, 212, 255, 0.08) 0%, transparent 80%);
+    background:
+      radial-gradient(circle at 50% 50%, rgba(115, 224, 255, 0.16) 0%, rgba(115, 224, 255, 0.05) 32%, transparent 78%),
+      linear-gradient(180deg, rgba(4, 18, 38, 0.08) 0%, rgba(4, 18, 38, 0.22) 100%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(6, 18, 34, 0.16);
     pointer-events: none;
     z-index: 1;
   }
@@ -251,8 +273,9 @@ export default {
     font-size: 16px;
     display: flex;
     align-items: center;
-    color: #00d4ff;
-    text-shadow: 0 0 5px rgba(0, 212, 255, 0.5);
+    color: #dff9ff;
+    text-shadow: 0 0 12px rgba(0, 212, 255, 0.45);
+    font-weight: 700;
   }
 }
 
@@ -270,21 +293,22 @@ export default {
     font-weight: 900;
     letter-spacing: 10px;
     width: 100%;
-    background: linear-gradient(92deg, #0072FF 0%, #00EAFF 48.8525390625%, #01AAFF 100%);
+    background: linear-gradient(92deg, #dff9ff 0%, #8eeeff 42%, #42cfff 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     white-space: nowrap;
+    filter: drop-shadow(0 0 14px rgba(0, 212, 255, 0.25));
   }
 }
 
 .top-nav {
   height: 50px;
-  background: rgba(15, 45, 85, 0.7);
+  background: linear-gradient(180deg, rgba(20, 60, 108, 0.92) 0%, rgba(15, 48, 90, 0.9) 100%);
   display: flex;
   padding: 0 30px;
   gap: 10px;
-  border-bottom: 2px solid #00d4ff;
-  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
+  border-bottom: 2px solid rgba(111, 231, 255, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 160, 255, 0.18);
   flex-shrink: 0;
   position: relative;
   z-index: 10;
@@ -296,13 +320,13 @@ export default {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: #4a90e2;
+    color: rgba(214, 242, 255, 0.88);
     font-size: 20px;
     transition: all 0.3s;
     font-weight: bold;
     letter-spacing: 2px;
     border-right: 1px solid rgba(0, 212, 255, 0.2);
-    background: rgba(0, 212, 255, 0.1);
+    background: linear-gradient(180deg, rgba(74, 153, 219, 0.22) 0%, rgba(36, 92, 156, 0.18) 100%);
     
     &:last-child {
       border-right: none;
@@ -320,9 +344,9 @@ export default {
     }
     
     &:hover {
-      color: #00d4ff;
-      background: rgba(0, 212, 255, 0.2);
-      text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+      color: #ffffff;
+      background: linear-gradient(180deg, rgba(84, 198, 255, 0.26) 0%, rgba(37, 108, 184, 0.24) 100%);
+      text-shadow: 0 0 12px rgba(115, 224, 255, 0.52);
       
       &::after {
         background: #00d4ff;
@@ -333,8 +357,8 @@ export default {
     
     &.active {
       color: #fff;
-      background: rgba(0, 212, 255, 0.3);
-      box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.2);
+      background: linear-gradient(180deg, rgba(60, 208, 255, 0.4) 0%, rgba(22, 130, 226, 0.32) 100%);
+      box-shadow: inset 0 0 20px rgba(150, 240, 255, 0.12), 0 0 18px rgba(0, 160, 255, 0.12);
       
       &::after {
         background: #00d4ff;

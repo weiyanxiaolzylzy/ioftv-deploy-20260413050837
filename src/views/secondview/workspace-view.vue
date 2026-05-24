@@ -857,7 +857,14 @@ export default {
     resolveAbsUrl(u) {
       if (!u) return '';
       if (/^https?:\/\//i.test(u)) return u;
-      const base = (process.env.VUE_APP_BACKEND_URL || process.env.VUE_APP_BASE_API || 'http://localhost:8890').replace(/\/$/, '');
+      const runtimeOrigin = typeof window !== 'undefined' && window.location && window.location.origin
+        ? window.location.origin
+        : '';
+      const envBase = (process.env.VUE_APP_BACKEND_URL || '').replace(/\/$/, '');
+      const fallbackBase = (process.env.NODE_ENV === 'production'
+        ? runtimeOrigin
+        : (process.env.VUE_APP_BASE_API || 'http://localhost:8890')).replace(/\/$/, '');
+      const base = envBase || fallbackBase;
       return `${base}/${u.replace(/^\//, '')}`;
     },
 
@@ -1052,27 +1059,27 @@ export default {
   }
   
   .work-detail-section {
-    background: rgba(15, 35, 60, 0.7);
-    border-radius: 4px;
-    border: 1px solid rgba(0, 212, 255, 0.3);
+    background: linear-gradient(180deg, rgba(18, 58, 102, 0.9) 0%, rgba(12, 42, 78, 0.88) 100%);
+    border-radius: 8px;
+    border: 1px solid rgba(129, 228, 255, 0.32);
     flex-shrink: 0;
-    box-shadow: 0 0 10px rgba(0, 212, 255, 0.1);
+    box-shadow: 0 12px 30px rgba(5, 28, 62, 0.25);
     
     .section-header {
       height: 32px;
-      background: rgba(0, 212, 255, 0.15);
+      background: linear-gradient(180deg, rgba(90, 194, 255, 0.22) 0%, rgba(42, 122, 194, 0.18) 100%);
       display: flex;
       align-items: center;
       padding: 0 12px;
-      font-size: 13px;
-      color: #00d4ff;
-      font-weight: bold;
+      font-size: 14px;
+      color: #f0fbff;
+      font-weight: 800;
       
       .header-icon {
         margin-right: 6px;
         font-size: 14px;
-        color: #00d4ff;
-        text-shadow: 0 0 8px #00d4ff;
+        color: #9eeeff;
+        text-shadow: 0 0 10px rgba(96, 218, 255, 0.55);
       }
     }
   }
@@ -1087,36 +1094,40 @@ export default {
     min-height: 0;
     
     .camera-item {
-      background: rgba(15, 35, 60, 0.7);
-      border-radius: 4px;
-      border: 1px solid rgba(0, 212, 255, 0.3);
+      background: linear-gradient(180deg, rgba(18, 58, 102, 0.88) 0%, rgba(10, 36, 68, 0.9) 100%);
+      border-radius: 8px;
+      border: 1px solid rgba(129, 228, 255, 0.28);
       display: flex;
       flex-direction: column;
       overflow: hidden;
       min-height: 0;
-      box-shadow: 0 0 8px rgba(0, 212, 255, 0.1);
+      box-shadow: 0 12px 30px rgba(4, 23, 52, 0.28);
       
       .camera-label {
-        height: 32px;
-        background: rgba(0, 212, 255, 0.1);
+        height: 38px;
+        background: linear-gradient(180deg, rgba(87, 196, 255, 0.2) 0%, rgba(41, 123, 196, 0.16) 100%);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 13px;
-        color: #00d4ff;
-        font-weight: bold;
+        font-size: 18px;
+        color: #ffffff;
+        font-weight: 800;
+        letter-spacing: 1px;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
         flex-shrink: 0;
-        border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+        border-bottom: 1px solid rgba(129, 228, 255, 0.22);
 
         &.camera-label--ifc {
-          justify-content: space-between;
-          padding: 0 8px;
+          justify-content: center;
+          padding: 0 44px 0 12px;
+          position: relative;
         }
 
         .ifc-title-block {
           display: flex;
           align-items: center;
-          gap: 8px;
+          justify-content: center;
+          gap: 10px;
           min-width: 0;
           flex: 1;
           overflow: hidden;
@@ -1124,21 +1135,27 @@ export default {
 
         .ifc-title-main {
           flex-shrink: 0;
-          color: #dff6ff;
-          font-weight: 700;
+          color: #ffffff;
+          font-size: 18px;
+          font-weight: 800;
           letter-spacing: 1px;
         }
 
         .ifc-title-code {
-          color: #00d4ff;
-          font-size: 11px;
+          color: rgba(255, 255, 255, 0.96);
+          font-size: 14px;
+          font-weight: 700;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          max-width: 220px;
+          max-width: 240px;
         }
 
         .ifc-plan-nav {
+          position: absolute;
+          right: 8px;
+          top: 50%;
+          transform: translateY(-50%);
           display: flex;
           align-items: center;
           gap: 3px;
@@ -1146,10 +1163,10 @@ export default {
           .nav-btn {
             width: 20px;
             height: 20px;
-            background: rgba(0, 186, 255, 0.15);
-            border: 1px solid rgba(0, 186, 255, 0.4);
-            border-radius: 3px;
-            color: #00d4ff;
+            background: rgba(114, 220, 255, 0.14);
+            border: 1px solid rgba(114, 220, 255, 0.34);
+            border-radius: 4px;
+            color: #f3fcff;
             font-size: 14px;
             line-height: 1;
             cursor: pointer;
@@ -1158,12 +1175,12 @@ export default {
             justify-content: center;
             padding: 0;
             &:disabled { opacity: 0.3; cursor: default; }
-            &:not(:disabled):hover { background: rgba(0, 186, 255, 0.3); }
+            &:not(:disabled):hover { background: rgba(114, 220, 255, 0.26); }
           }
 
           .nav-count {
             font-size: 10px;
-            color: rgba(0, 212, 255, 0.6);
+            color: rgba(219, 248, 255, 0.84);
             min-width: 24px;
             text-align: center;
           }
@@ -1187,7 +1204,7 @@ export default {
 
       .camera-display {
         flex: 1;
-        background: #000;
+        background: linear-gradient(180deg, #0d1b2e 0%, #081423 100%);
         min-height: 60px;
         cursor: pointer;
         display: flex;
@@ -1209,9 +1226,9 @@ export default {
         }
         
         &:hover {
-          background: #000;
-          border: 1px solid #00d4ff;
-          box-shadow: inset 0 0 15px rgba(0, 212, 255, 0.2);
+          background: linear-gradient(180deg, #11233c 0%, #0a1627 100%);
+          border: 1px solid rgba(126, 228, 255, 0.7);
+          box-shadow: inset 0 0 18px rgba(115, 224, 255, 0.18);
         }
         
         img {
@@ -1222,7 +1239,7 @@ export default {
         }
         
         .upload-hint {
-          color: #5a7390;
+          color: rgba(221, 245, 255, 0.72);
           font-size: 11px;
           user-select: none;
         }
@@ -1251,11 +1268,11 @@ export default {
   .collapse-toggle {
     width: 28px;
     min-width: 28px;
-    background: rgba(0, 212, 255, 0.15);
-    border: 1px solid rgba(0, 212, 255, 0.35);
+    background: linear-gradient(180deg, rgba(78, 189, 255, 0.22) 0%, rgba(33, 108, 186, 0.24) 100%);
+    border: 1px solid rgba(126, 228, 255, 0.38);
     border-right: none;
     border-radius: 8px 0 0 8px;
-    color: #00d4ff;
+    color: #eafcff;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1264,8 +1281,8 @@ export default {
     z-index: 10;
 
     &:hover {
-      background: rgba(0, 212, 255, 0.3);
-      border-color: rgba(0, 212, 255, 0.6);
+      background: linear-gradient(180deg, rgba(110, 226, 255, 0.28) 0%, rgba(35, 126, 215, 0.32) 100%);
+      border-color: rgba(126, 228, 255, 0.6);
     }
   }
 
@@ -1285,25 +1302,25 @@ export default {
   
   .info-panel {
     flex: 1;
-    background: rgba(15, 35, 60, 0.7);
-    border-radius: 4px;
-    border: 1px solid rgba(0, 212, 255, 0.3);
+    background: linear-gradient(180deg, rgba(18, 58, 102, 0.92) 0%, rgba(12, 42, 78, 0.9) 100%);
+    border-radius: 8px;
+    border: 1px solid rgba(129, 228, 255, 0.3);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
-    box-shadow: 0 0 10px rgba(0, 212, 255, 0.1);
+    box-shadow: 0 12px 30px rgba(5, 28, 62, 0.25);
     
     .panel-header {
       height: 32px;
-      background: rgba(0, 212, 255, 0.15);
+      background: linear-gradient(180deg, rgba(90, 194, 255, 0.22) 0%, rgba(42, 122, 194, 0.18) 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 14px;
-      color: #00d4ff;
-      font-weight: bold;
-      border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+      color: #f0fbff;
+      font-weight: 800;
+      border-bottom: 1px solid rgba(129, 228, 255, 0.2);
       flex-shrink: 0;
     }
 
@@ -1340,7 +1357,7 @@ export default {
       display: flex;
       flex-direction: column;
       gap: 2px;
-      color: rgba(255, 255, 255, 0.78);
+      color: rgba(241, 250, 255, 0.9);
       font-size: 11px;
       line-height: 1.4;
     }
@@ -1360,23 +1377,23 @@ export default {
         justify-content: space-between;
         gap: 4px;
         font-size: 11px;
-        background: rgba(0, 212, 255, 0.05);
+        background: linear-gradient(180deg, rgba(110, 216, 255, 0.12) 0%, rgba(57, 121, 181, 0.1) 100%);
         padding: 0 8px;
         border-radius: 3px;
-        border: 1px solid rgba(0, 212, 255, 0.1);
+        border: 1px solid rgba(129, 228, 255, 0.12);
         min-height: 0;
         
         .info-label {
-          color: #4a90e2;
+          color: rgba(220, 245, 255, 0.88);
           white-space: nowrap;
           font-size: 10px;
         }
         
         .info-value {
-          color: #00d4ff;
+          color: #ffffff;
           font-weight: bold;
-          font-size: 12px;
-          text-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
+          font-size: 13px;
+          text-shadow: 0 0 8px rgba(115, 224, 255, 0.18);
         }
       }
     }
@@ -1384,25 +1401,25 @@ export default {
   
   .operation-panel {
     flex: 1;
-    background: rgba(15, 35, 60, 0.7);
-    border-radius: 4px;
-    border: 1px solid rgba(0, 212, 255, 0.3);
+    background: linear-gradient(180deg, rgba(18, 58, 102, 0.92) 0%, rgba(12, 42, 78, 0.9) 100%);
+    border-radius: 8px;
+    border: 1px solid rgba(129, 228, 255, 0.3);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
-    box-shadow: 0 0 10px rgba(0, 212, 255, 0.1);
+    box-shadow: 0 12px 30px rgba(5, 28, 62, 0.25);
     
     .panel-header-line {
       height: 32px;
-      background: rgba(0, 212, 255, 0.1);
-      border-bottom: 2px solid #00d4ff;
+      background: linear-gradient(180deg, rgba(90, 194, 255, 0.2) 0%, rgba(42, 122, 194, 0.16) 100%);
+      border-bottom: 2px solid rgba(129, 228, 255, 0.9);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 14px;
-      color: #00d4ff;
-      font-weight: bold;
+      color: #f0fbff;
+      font-weight: 800;
       flex-shrink: 0;
     }
     
@@ -1423,7 +1440,7 @@ export default {
         
         .op-btn {
           flex: 1;
-          background: linear-gradient(180deg, #00d4ff 0%, #0072ff 100%);
+          background: linear-gradient(180deg, #39d2ff 0%, #178cff 52%, #0e71ef 100%);
           border: none;
           border-radius: 4px;
           color: #fff;
@@ -1431,11 +1448,11 @@ export default {
           font-weight: bold;
           cursor: pointer;
           transition: all 0.2s;
-          box-shadow: 0 2px 8px rgba(0, 114, 255, 0.4);
+          box-shadow: 0 6px 16px rgba(13, 120, 230, 0.34);
           text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
           
           &:hover {
-            background: linear-gradient(180deg, #33e1ff 0%, #1a8cff 100%);
+            background: linear-gradient(180deg, #69e6ff 0%, #27a2ff 52%, #167cf4 100%);
           }
         }
       }
@@ -1449,7 +1466,7 @@ export default {
         .angle-btn {
           width: 45px;
           flex-shrink: 0;
-          background: linear-gradient(180deg, #00d4ff 0%, #0072ff 100%);
+          background: linear-gradient(180deg, #39d2ff 0%, #178cff 52%, #0e71ef 100%);
           border: none;
           border-radius: 4px;
           color: #fff;
@@ -1459,26 +1476,26 @@ export default {
           box-shadow: 0 2px 6px rgba(0, 114, 255, 0.4);
           
           &:hover {
-            background: linear-gradient(180deg, #33e1ff 0%, #1a8cff 100%);
+            background: linear-gradient(180deg, #69e6ff 0%, #27a2ff 52%, #167cf4 100%);
           }
         }
         
         .angle-value {
           flex: 1;
           min-width: 0;
-          background: #000;
-          border: 2px solid #00d4ff;
+          background: linear-gradient(180deg, #10233c 0%, #091626 100%);
+          border: 2px solid rgba(129, 228, 255, 0.9);
           border-radius: 4px;
           text-align: center;
           font-size: 14px;
           font-weight: bold;
-          color: #00d4ff;
+          color: #ffffff;
           padding: 0;
-          box-shadow: 0 0 8px rgba(0, 212, 255, 0.2);
+          box-shadow: 0 0 10px rgba(115, 224, 255, 0.16);
           
           &:focus {
             outline: none;
-            border-color: #33e1ff;
+            border-color: #d7f8ff;
           }
         }
         
@@ -1491,7 +1508,7 @@ export default {
           
           .arrow-btn {
             flex: 1;
-            background: linear-gradient(180deg, #00d4ff 0%, #0072ff 100%);
+            background: linear-gradient(180deg, #39d2ff 0%, #178cff 52%, #0e71ef 100%);
             border: none;
             border-radius: 3px;
             color: #fff;
@@ -1502,7 +1519,7 @@ export default {
             justify-content: center;
             
             &:hover {
-              background: linear-gradient(180deg, #33e1ff 0%, #1a8cff 100%);
+              background: linear-gradient(180deg, #69e6ff 0%, #27a2ff 52%, #167cf4 100%);
             }
           }
         }
@@ -1512,7 +1529,7 @@ export default {
 }
 
 .click-hint {
-  color: #5a7390;
+  color: rgba(234, 247, 255, 0.82);
   font-size: 14px;
 }
 

@@ -32,26 +32,37 @@
 
       <!-- 数据列表 -->
       <div v-else class="list-area">
-        <!-- 表头 -->
         <div class="row row--head">
           <span class="cell cell--project">项目名称</span>
           <span class="cell cell--num">构件编号</span>
           <span class="cell cell--team">班组</span>
         </div>
-        <!-- 内容区 -->
-        <div class="list-body" ref="listBody">
+        <div class="list-body list-body--grouped" ref="listBody">
           <div
-            v-for="(item, i) in todayList"
-            :key="(item.componentId || '') + '-' + i"
-            class="row"
-            :class="{ 'is-active': item.projectId && item.projectId === highlightedProjectId }"
-            @click="goToProject(item)"
+            v-for="(group, groupIndex) in groupedTodayList"
+            :key="`${group.projectId || 'project'}-${groupIndex}`"
+            class="project-group"
           >
-            <span class="cell cell--project" :title="item.project">
-              <span class="dot dot--project" />{{ item.project || '—' }}
-            </span>
-            <span class="cell cell--num" :title="item.componentName">{{ item.componentName || '—' }}</span>
-            <span class="cell cell--team" :title="item.teamName || item.team">{{ item.teamName || item.team || '—' }}</span>
+            <div
+              class="project-group__head"
+              :class="{ 'is-active': group.projectId && group.projectId === highlightedProjectId }"
+            >
+              <span class="dot dot--project" />{{ group.projectName || '未命名项目' }}
+              <span class="project-group__count">{{ group.items.length }}</span>
+            </div>
+            <div
+              v-for="(item, i) in group.items"
+              :key="`${group.projectId || ''}-${item.componentId || ''}-${i}`"
+              class="row row--child"
+              :class="{ 'is-active': item.projectId && item.projectId === highlightedProjectId }"
+              @click="goToProject(item)"
+            >
+              <span class="cell cell--project" :title="group.projectName">
+                {{ group.projectName || '—' }}
+              </span>
+              <span class="cell cell--num" :title="item.componentName">{{ item.componentName || '—' }}</span>
+              <span class="cell cell--team" :title="item.teamName || item.team">{{ item.teamName || item.team || '—' }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -148,14 +159,25 @@ export default {
       todayList: [],
       historyList: [],
       historyLoading: false,
-      scrollThreshold: 5,
       highlightedProjectId: null,
       refreshTimer: null,
       scrollTimer: null,
     };
   },
   computed: {
-    canEdit() { return canEditFeature('today_plan') }
+    canEdit() { return canEditFeature('today_plan') },
+    groupedTodayList() {
+      const groups = new Map()
+      for (const item of this.todayList || []) {
+        const projectId = String(item && item.projectId ? item.projectId : '')
+        const projectName = item && item.project ? item.project : '未命名项目'
+        if (!groups.has(projectId)) {
+          groups.set(projectId, { projectId, projectName, items: [] })
+        }
+        groups.get(projectId).items.push(item)
+      }
+      return Array.from(groups.values())
+    }
   },
   created() {
     this.fetchTodayPlan()
@@ -189,13 +211,26 @@ export default {
 
     startScroll() {
       if (this.scrollTimer) clearInterval(this.scrollTimer)
-      if (this.todayList.length < this.scrollThreshold) return
+      const body = this.$refs.listBody
+      if (!body) return
+      const rows = Array.from(body.querySelectorAll('.row.row--child'))
+      if (!rows.length) return
+      const rowHeight = rows[0].offsetHeight || 36
+      const visibleRows = Math.max(Math.floor((body.clientHeight || 0) / rowHeight), 1)
+      if (rows.length <= visibleRows || body.scrollHeight <= body.clientHeight + 2) {
+        body.scrollTop = 0
+        return
+      }
       let pos = 0
       this.scrollTimer = setInterval(() => {
-        const body = this.$refs.listBody
-        if (!body) return
-        pos = (pos + 1) % this.todayList.length
-        body.scrollTop = pos * 36
+        const currentBody = this.$refs.listBody
+        if (!currentBody) return
+        const maxIndex = Math.max(rows.length - visibleRows, 0)
+        pos = pos >= maxIndex ? 0 : pos + 1
+        currentBody.scrollTo({
+          top: pos * rowHeight,
+          behavior: 'smooth'
+        })
       }, 2500)
     },
 
@@ -210,6 +245,7 @@ export default {
         }
       } catch (e) {}
       this.todayList = []
+      this.$nextTick(() => this.startScroll())
     },
 
     async fetchHistory() {
@@ -491,6 +527,35 @@ export default {
   }
 }
 
+.project-group {
+  display: block;
+}
+
+.project-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  color: rgba(143, 222, 255, 0.92);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: linear-gradient(90deg, rgba(0, 186, 255, 0.12) 0%, rgba(0, 186, 255, 0.03) 100%);
+  border-top: 1px solid rgba(0, 186, 255, 0.08);
+
+  &.is-active {
+    color: #ffffff;
+    box-shadow: inset 3px 0 0 rgba(255, 160, 50, 0.8);
+  }
+}
+
+.project-group__count {
+  margin-left: auto;
+  font-size: 12px;
+  color: rgba(0, 186, 255, 0.55);
+}
+
 /* ── 行 ── */
 .row {
   display: flex;
@@ -543,6 +608,11 @@ export default {
     &::before { background: rgba(255, 160, 50, 0.8); }
 
     .cell--project { color: #ffcc66; }
+  }
+
+  &--child {
+    min-height: 34px;
+    padding-left: 18px;
   }
 }
 

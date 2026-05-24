@@ -28,7 +28,7 @@
       <div class="contetn_right">
         <ItemWrap
           class="contetn_right-top contetn_lr-item"
-          title="生产绩效榜"
+          title="生产合格率绩效榜"
           :title-clickable="true"
           @title-click="openPerformanceGroupSettings"
         >
@@ -287,7 +287,7 @@ export default {
     -webkit-text-fill-color: transparent !important;
   }
 
-  // 强制胶囊图柱子颜色显示（本月生产排名）
+  // 强制胶囊图柱子颜色显示（本月生产合格率排名）
   ::v-deep .dv-capsule-chart {
     // 柱子有颜色
     .capsule-container .capsule-item:nth-child(1) > div {
@@ -483,7 +483,7 @@ export default {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(290px, 23fr) minmax(0, 54fr) minmax(290px, 23fr);
+  grid-template-columns: minmax(290px, 22fr) minmax(0, 58fr) minmax(270px, 20fr);
   grid-template-rows: minmax(0, 1fr) clamp(240px, 26vh, 340px);
   gap: clamp(10px, 0.8vw, 16px);
   align-items: stretch;
@@ -501,7 +501,7 @@ export default {
     grid-column: 1;
     grid-row: 1 / span 2;
     display: grid;
-    grid-template-rows: minmax(0, 0.95fr) minmax(0, 1.08fr) minmax(0, 0.97fr);
+    grid-template-rows: minmax(0, 0.78fr) minmax(0, 0.88fr) minmax(0, 1.34fr);
     min-height: 0;
     position: relative;
   }
@@ -570,12 +570,15 @@ export default {
   ::v-deep .glass-card.contetn_left-top.contetn_lr-item,
   ::v-deep .glass-card.contetn_left-center.contetn_lr-item,
   ::v-deep .glass-card.contetn_left-bottom.contetn_lr-item {
-    background-image:
-      linear-gradient(180deg, rgba(3, 16, 30, 0.18) 0%, rgba(3, 16, 30, 0.28) 100%),
-      url("/panel.png") !important;
-    background-position: center center !important;
-    background-repeat: no-repeat !important;
-    background-size: 100% 100% !important;
+    background-image: none !important;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.03) 100%) !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+      0 10px 28px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
   }
 
   ::v-deep .glass-card.contetn_left-top.contetn_lr-item,
@@ -596,21 +599,21 @@ export default {
 
 @media (min-aspect-ratio: 21 / 9) {
   .inspection_layout {
-    grid-template-columns: minmax(310px, 23fr) minmax(0, 54fr) minmax(310px, 23fr);
+    grid-template-columns: minmax(300px, 22fr) minmax(0, 59fr) minmax(280px, 19fr);
     grid-template-rows: minmax(0, 1fr) clamp(220px, 23vh, 320px);
   }
 }
 
 @media (max-aspect-ratio: 16 / 9) {
   .inspection_layout {
-    grid-template-columns: minmax(270px, 25fr) minmax(0, 48fr) minmax(270px, 27fr);
+    grid-template-columns: minmax(260px, 24fr) minmax(0, 52fr) minmax(250px, 24fr);
     grid-template-rows: minmax(0, 1fr) clamp(250px, 28vh, 360px);
   }
 }
 
 @media (max-width: 1500px) {
   .inspection_layout {
-    grid-template-columns: minmax(250px, 25fr) minmax(0, 46fr) minmax(250px, 29fr);
+    grid-template-columns: minmax(240px, 24fr) minmax(0, 52fr) minmax(235px, 24fr);
   }
 }
 </style>
